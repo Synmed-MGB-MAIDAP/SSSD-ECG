@@ -3,10 +3,13 @@ import argparse
 import json
 import numpy as np
 import torch
+import random
 
 from utils.util import find_max_epoch, print_size, sampling_label, calc_diffusion_hyperparams
 from models.SSSD_ECG import SSSD_ECG
 
+data_path = '/home/zoeyhuang/MGB-MAIDAP/SSSD-ECG/Dataset/data'
+label_path = '/home/zoeyhuang/MGB-MAIDAP/SSSD-ECG/Dataset/labels'
 
 def generate_four_leads(tensor):
     leadI = tensor[:,0,:].unsqueeze(1)
@@ -68,7 +71,7 @@ def generate(output_directory,
     ckpt_path = os.path.join(ckpt_path, local_path)
     if ckpt_iter == 'max':
         ckpt_iter = find_max_epoch(ckpt_path)
-    model_path = os.path.join(ckpt_path, '{}.pkl'.format(ckpt_iter))
+    model_path = os.path.join(ckpt_path, '{}_d.pkl'.format(ckpt_iter))
     try:
         checkpoint = torch.load(model_path, map_location='cpu')
         net.load_state_dict(checkpoint['model_state_dict'])
@@ -77,13 +80,24 @@ def generate(output_directory,
         raise Exception('No valid model found')
 
    
-    labels = np.load('ptbxl_test_labels.npy')
-    l1 = labels[0:400]
-    l2 = labels[400:800]
-    l3 = labels[800:1200]
-    l4 = labels[1200:1600]
-    l5 = labels[1600:2000]
-    l6 = labels[2000:]
+    labels = np.load(os.path.join(label_path, 'ptbxl_test_labels.npy'))
+    # random select num_samples of labels
+    if num_samples <= 400:
+        l1 = np.random.choice(labels[0:400], size=num_samples, replace=False)
+        l2 = np.random.choice(labels[400:800], size=num_samples, replace=False)
+        l3 = np.random.choice(labels[800:1200], size=num_samples, replace=False)
+        l4 = np.random.choice(labels[1200:1600], size=num_samples, replace=False)
+        l5 = np.random.choice(labels[1600:2000], size=num_samples, replace=False)
+        l6 = np.random.choice(labels[2000:], size=num_samples, replace=False)
+
+        print(l1, l2, l3, l4, l5, l6)
+    
+
+    # l2 = labels[400:800]
+    # l3 = labels[800:1200]
+    # l4 = labels[1200:1600]
+    # l5 = labels[1600:2000]
+    # l6 = labels[2000:]
     
     for i, label in enumerate((l1,l2,l3,l4,l5,l6)):
         
@@ -121,11 +135,11 @@ def generate(output_directory,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='config/config_SSSD_ECG.json',
+    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG.json',
                         help='JSON file for configuration')
     parser.add_argument('-ckpt_iter', '--ckpt_iter', default=100000,
                         help='Which checkpoint to use; assign a number or "max"')
-    parser.add_argument('-n', '--num_samples', type=int, default=400,
+    parser.add_argument('-n', '--num_samples', type=int, default=4,
                         help='Number of utterances to be generated')
     args = parser.parse_args()
 
@@ -152,11 +166,16 @@ if __name__ == "__main__":
     global model_config
     model_config = config['wavenet_config']
 
+    # generate(**gen_config,
+    #          ckpt_iter=args.ckpt_iter,
+    #          num_samples=args.num_samples,
+    #          use_model=train_config["use_model"],
+    #          data_path=trainset_config["data_path"],
+    #          masking=train_config["masking"],
+    #          missing_k=train_config["missing_k"])
+    
     generate(**gen_config,
              ckpt_iter=args.ckpt_iter,
              num_samples=args.num_samples,
-             use_model=train_config["use_model"],
-             data_path=trainset_config["data_path"],
-             masking=train_config["masking"],
-             missing_k=train_config["missing_k"])
+             data_path=trainset_config["data_path"])
 

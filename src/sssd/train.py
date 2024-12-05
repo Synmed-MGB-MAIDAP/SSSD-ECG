@@ -8,6 +8,8 @@ import torch.nn as nn
 from utils.util import find_max_epoch, print_size, training_loss_label, calc_diffusion_hyperparams
 from models.SSSD_ECG import SSSD_ECG
 
+data_path = '/home/zoeyhuang/MGB-MAIDAP/SSSD-ECG/Dataset/data'
+label_path = '/home/zoeyhuang/MGB-MAIDAP/SSSD-ECG/Dataset/labels'
 
 def train(output_directory,
           ckpt_iter,
@@ -78,8 +80,8 @@ def train(output_directory,
         
         
     
-    data_ptbxl = np.load('ptbxl_train_data.npy')
-    labels_ptbxl = np.load('ptbxl_train_labels.npy')    
+    data_ptbxl = np.load(os.path.join(data_path, 'ptbxl_train_data.npy'))
+    labels_ptbxl = np.load(os.path.join(label_path, 'ptbxl_train_labels.npy'))   
     
     train_data = []
     for i in range(len(data_ptbxl)):
@@ -132,6 +134,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    print(args.config)
     with open(args.config) as f:
         data = f.read()
 

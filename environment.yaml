@@ -1,0 +1,20 @@
+name: MGB-MAIDAP
+channels:
+  - pytorch
+  - nvidia
+dependencies:
+  - python >= 3.8
+  - pytorch >= 1.13
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=12.1
+  - pip:
+    - timm
+    - diffusers
+    - accelerate
+    - einops
+    - pytorch-lightning
+    - scipy
+    - opt_einsum
+    - matplotlib
+    - ecg_plot

@@ -8,8 +8,8 @@ import random
 from utils.util import find_max_epoch, print_size, sampling_label, calc_diffusion_hyperparams
 from models.SSSD_ECG import SSSD_ECG
 
-data_path = '/home/zoeyhuang/MGB-MAIDAP/SSSD-ECG/Dataset/data'
-label_path = '/home/zoeyhuang/MGB-MAIDAP/SSSD-ECG/Dataset/labels'
+data_path = '/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/Dataset/data'
+label_path = '/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/Dataset/labels'
 
 def generate_four_leads(tensor):
     leadI = tensor[:,0,:].unsqueeze(1)
@@ -71,7 +71,7 @@ def generate(output_directory,
     ckpt_path = os.path.join(ckpt_path, local_path)
     if ckpt_iter == 'max':
         ckpt_iter = find_max_epoch(ckpt_path)
-    model_path = os.path.join(ckpt_path, '{}_d.pkl'.format(ckpt_iter))
+    model_path = os.path.join(ckpt_path, '{}_download.pkl'.format(ckpt_iter))
     try:
         checkpoint = torch.load(model_path, map_location='cpu')
         net.load_state_dict(checkpoint['model_state_dict'])
@@ -80,27 +80,24 @@ def generate(output_directory,
         raise Exception('No valid model found')
 
    
-    labels = np.load(os.path.join(label_path, 'ptbxl_test_labels.npy'))
-    # random select num_samples of labels
-    if num_samples <= 400:
-        l1 = np.random.choice(labels[0:400], size=num_samples, replace=False)
-        l2 = np.random.choice(labels[400:800], size=num_samples, replace=False)
-        l3 = np.random.choice(labels[800:1200], size=num_samples, replace=False)
-        l4 = np.random.choice(labels[1200:1600], size=num_samples, replace=False)
-        l5 = np.random.choice(labels[1600:2000], size=num_samples, replace=False)
-        l6 = np.random.choice(labels[2000:], size=num_samples, replace=False)
-
-        print(l1, l2, l3, l4, l5, l6)
+    labels = np.load(os.path.join(label_path, 'ptbxl_train_labels.npy'))
+    # save labels to a txt file
+    np.savetxt(os.path.join(label_path, 'ptbxl_train_labels.txt'), labels, fmt='%d')
     
+    print(labels.shape)
+    # break down labels into chunks of 400
 
-    # l2 = labels[400:800]
-    # l3 = labels[800:1200]
-    # l4 = labels[1200:1600]
-    # l5 = labels[1600:2000]
-    # l6 = labels[2000:]
+    chunks = []
+    for i in range(0, len(labels), 400):
+        if i + 400 <= len(labels):
+            chunks.append(labels[i:i+400])
+        else:
+            chunks.append(labels[i:])
     
-    for i, label in enumerate((l1,l2,l3,l4,l5,l6)):
-        
+    
+    for i, label in enumerate(chunks):
+        if i!=len(chunks)-1:
+            continue
         cond = torch.from_numpy(label).cuda().float()
 
         # inference
@@ -108,10 +105,15 @@ def generate(output_directory,
         end = torch.cuda.Event(enable_timing=True)
         start.record()
 
+        if num_samples != len(cond):
+            num_samples = len(cond)
+        
+        print("Generating {} samples for chunk {}".format(num_samples, i))
+
         generated_audio = sampling_label(net, (num_samples,8,1000), 
                                diffusion_hyperparams,
                                cond=cond)
-
+        
         generated_audio12 = generate_four_leads(generated_audio)
 
         end.record()
@@ -139,7 +141,7 @@ if __name__ == "__main__":
                         help='JSON file for configuration')
     parser.add_argument('-ckpt_iter', '--ckpt_iter', default=100000,
                         help='Which checkpoint to use; assign a number or "max"')
-    parser.add_argument('-n', '--num_samples', type=int, default=4,
+    parser.add_argument('-n', '--num_samples', type=int, default=400,
                         help='Number of utterances to be generated')
     args = parser.parse_args()
 
@@ -178,4 +180,3 @@ if __name__ == "__main__":
              ckpt_iter=args.ckpt_iter,
              num_samples=args.num_samples,
              data_path=trainset_config["data_path"])
-

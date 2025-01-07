@@ -40,7 +40,7 @@
         "data_path":"../Dataset"
     },
     "gen_config":{
-        "output_directory": "sssd_label_cond",
-        "ckpt_path": "sssd_label_cond/"
+        "output_directory": "/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/ckpt/sssd_label_cond",
+        "ckpt_path": "/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/ckpt/sssd_label_cond/"
     }
 }

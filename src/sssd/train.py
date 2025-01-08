@@ -8,8 +8,8 @@ import torch.nn as nn
 from utils.util import find_max_epoch, print_size, training_loss_label, calc_diffusion_hyperparams
 from models.SSSD_ECG import SSSD_ECG
 
-data_path = '/home/zoeyhuang/MGB-MAIDAP/SSSD-ECG/Dataset/data'
-label_path = '/home/zoeyhuang/MGB-MAIDAP/SSSD-ECG/Dataset/labels'
+data_path = '/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/Dataset/data'
+label_path = '/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/Dataset/labels'
 
 def train(output_directory,
           ckpt_iter,

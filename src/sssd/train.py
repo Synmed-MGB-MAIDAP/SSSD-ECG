@@ -85,14 +85,12 @@ def train(output_directory,
     data_ptbxl = np.transpose(data_ptbxl, (0, 2, 1))
     train_data = []
     count=0
-    print ("Data:",data_ptbxl.shape)
     for i in range(len(data_ptbxl)):
         count+=1
         if count>1000:
             break
         train_data.append([data_ptbxl[i], labels_ptbxl[i]])
     
-    print ("Single element in train data", train_data[0][0].shape)
         
     trainloader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=6, drop_last=True)
        

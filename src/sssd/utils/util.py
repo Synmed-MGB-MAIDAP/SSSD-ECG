@@ -190,6 +190,7 @@ def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
     print ("EPSILON THETA", epsilon_theta.shape) # torch.randn(6, 8, 1000)
 
     epsilon_theta_ECGSignal = ECGSignal(epsilon_theta, sample_rate=100)
+    print ("EPSILON THETA DEVICE", epsilon_theta_ECGSignal.device())
     z_ECGSignal = ECGSignal(z, sample_rate=100) 
 
     print (epsilon_theta_ECGSignal.signal_data.shape)

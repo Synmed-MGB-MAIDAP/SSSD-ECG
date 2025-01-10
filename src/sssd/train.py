@@ -101,7 +101,7 @@ def train(output_directory,
     
     # define loss function
     mel_loss = MelSpectrogramLoss(
-            window_lengths=[2048, 512],
+            window_lengths=[512],
             n_mels=[64, 128],
             mel_fmin=[0, 0],
             mel_fmax=[200, 200],
@@ -144,8 +144,6 @@ def train(output_directory,
                 print('model at iteration %s is saved' % n_iter)
 
             n_iter += 1
-            break
-        break
 
 
 if __name__ == "__main__":

@@ -1,0 +1,6 @@
+[submodule "models/SSSD-ECG"]
+	path = models/SSSD-ECG
+	url = git@github.com:Synmed-MGB-MAIDAP/SSSD-ECG.git
+[submodule "evals/synthwave"]
+	path = evals/synthwave
+	url = git@github.com:Entodi/synthwave.git

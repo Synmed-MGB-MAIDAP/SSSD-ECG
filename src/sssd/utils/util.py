@@ -184,16 +184,11 @@ def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
     B, C, L = audio.shape  # B is batchsize, C=1, L is audio length, C=8?
     diffusion_steps = torch.randint(T, size=(B,1,1)).cuda()  # randomly sample diffusion steps from 1~T
     z = std_normal(audio.shape)  # do we wanna do this?
-    print("Z", z.shape)  # (6, 8, 1000)
     transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * audio + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z
     epsilon_theta = net((transformed_X, label, diffusion_steps.view(B,1),))  
-    print ("EPSILON THETA", epsilon_theta.shape) # torch.randn(6, 8, 1000)
 
-    epsilon_theta_ECGSignal = ECGSignal(epsilon_theta, sample_rate=100)
-    print ("EPSILON THETA DEVICE", epsilon_theta_ECGSignal.device())
+    epsilon_theta_ECGSignal = ECGSignal(epsilon_theta, sample_rate=100) # shape is torch.Size([6, 8, 1000])
     z_ECGSignal = ECGSignal(z, sample_rate=100) 
 
-    print (epsilon_theta_ECGSignal.signal_data.shape)
-    print (z_ECGSignal.signal_data.shape)
     loss = loss_fn(epsilon_theta_ECGSignal, z_ECGSignal)
     return loss

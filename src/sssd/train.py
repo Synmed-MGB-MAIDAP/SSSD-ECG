@@ -4,13 +4,24 @@ import json
 import numpy as np
 import torch
 import torch.nn as nn
-
+import warnings
+import wandb
+from pathlib import Path
 from models.SSSD_ECG import SSSD_ECG
-from wavetools.metrics.spectral import MelSpectrogramLoss
 from utils.util import find_max_epoch, print_size, training_loss_label, calc_diffusion_hyperparams
+wandb.init(project="MGB_MAIDAP_spectral_loss", name="spectral_loss_v1")
 
-data_path = '/home/nutansahoo/MGB-MAIDAP/models/SSSD-ECG/Datasets'
-label_path = '/home/nutansahoo/MGB-MAIDAP/models/SSSD-ECG/Datasets'
+# Ignore a specific warning (e.g., deprecation warning)
+warnings.filterwarnings('ignore')
+warnings.filterwarnings('ignore', message='[pyKeOps] Warning : keyword argument dtype in Genred is deprecated ; argument is ignored.')
+
+
+
+
+
+data_path = Path.home() / 'MGB-MAIDAP/models/SSSD-ECG/Dataset/data'
+label_path = Path.home() / 'MGB-MAIDAP/models/SSSD-ECG/Dataset/labels'
+
 def train(output_directory,
           ckpt_iter,
           n_iters,
@@ -37,6 +48,8 @@ def train(output_directory,
     local_path = "ch{}_T{}_betaT{}".format(model_config["res_channels"], 
                                            diffusion_config["T"], 
                                            diffusion_config["beta_T"])
+    
+
 
     # Get shared output_directory ready
     output_directory = os.path.join(output_directory, local_path)
@@ -79,16 +92,11 @@ def train(output_directory,
         print('No valid checkpoint model found, start training from initialization.')
         
         
-    
     data_ptbxl = np.load(os.path.join(data_path, 'ptbxl_train_data.npy'))
     labels_ptbxl = np.load(os.path.join(label_path, 'ptbxl_train_labels.npy'))   
-    data_ptbxl = np.transpose(data_ptbxl, (0, 2, 1))
+    
     train_data = []
-    count=0
     for i in range(len(data_ptbxl)):
-        count+=1
-        if count>1000:
-            break
         train_data.append([data_ptbxl[i], labels_ptbxl[i]])
     
         
@@ -97,41 +105,42 @@ def train(output_directory,
     index_8 = torch.tensor([0,2,3,4,5,6,7,11])
     index_4 = torch.tensor([1,8,9,10])
     
-    # define loss function
-    mel_loss = MelSpectrogramLoss(
-            window_lengths=[512],
-            n_mels=[64, 128],
-            mel_fmin=[0, 0],
-            mel_fmax=[200, 200],
-            loss_fn=torch.nn.L1Loss(),
-            clamp_eps=1e-5,
-            log_weight=1.0,
-            mag_weight=1.0,
-            weight=1.0,
-            pow=2,
-        )
-    
+    # Log hyperparameters (optional)
+    wandb.config = {
+        "learning_rate": optimizer.param_groups[0]["lr"],
+        "batch_size": trainloader.batch_size if hasattr(trainloader, 'batch_size') else 'Unknown',
+        "n_iters": n_iters,
+        "iters_per_ckpt": iters_per_ckpt,
+        "iters_per_logging": iters_per_logging,
+    }
     # training
     n_iter = ckpt_iter + 1
     
     while n_iter < n_iters + 1:
+        
         for audio, label in trainloader:
             
-            audio = torch.index_select(audio, 1, index_8).float().cuda() # shape of audio becomes [6, 8, 1000]
-            label = label.float().cuda() # shape of label [6,71]
+            audio = torch.index_select(audio, 1, index_8).float().cuda()
+            label = label.float().cuda()
+
+            # print(audio.shape)
+            # print(label.shape)
+           
             
             # back-propagation
             optimizer.zero_grad()
             
             X = audio, label
             
-            loss = training_loss_label(net, mel_loss, X, diffusion_hyperparams)
+            loss = training_loss_label(net, nn.MSELoss(), X, diffusion_hyperparams)
             
             loss.backward()
             optimizer.step()
 
             if n_iter % iters_per_logging == 0:
                 print("iteration: {} \tloss: {}".format(n_iter, loss.item()))
+                wandb.log({"iteration": n_iter, "loss": loss.item()})
+
 
             # save checkpoint
             if n_iter > 0 and n_iter % iters_per_ckpt == 0:
@@ -140,6 +149,9 @@ def train(output_directory,
                             'optimizer_state_dict': optimizer.state_dict()},
                            os.path.join(output_directory, checkpoint_name))
                 print('model at iteration %s is saved' % n_iter)
+                # Log the model checkpoint as an artifact to W&B
+                checkpoint_path = os.path.join(output_directory, checkpoint_name)
+                wandb.save(checkpoint_path)
 
             n_iter += 1
 

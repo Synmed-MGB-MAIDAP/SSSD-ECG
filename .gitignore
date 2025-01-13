@@ -2,6 +2,7 @@ ckpt
 Dataset
 gen_data
 src/ptb_xl/processed_ptb_xl_fs100
-src/sssd/sssd_label_cond
-*.log
-__pycache__/
+src/sssd/utils/__pycache__/
+src/ptb_xl/clinical_ts/__pycache__/
+src/sssd/sssd_label_cond/*
+src/sssd/wandb/*

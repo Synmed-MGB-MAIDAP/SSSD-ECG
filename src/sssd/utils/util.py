@@ -3,6 +3,8 @@ import sys
 import numpy as np
 import torch
 import random
+from wavetools.core import ECGSignal
+from wavetools.metrics.spectral import  MelSpectrogramLoss
 
 from wavetools.metrics.spectral import MelSpectrogramLoss
 from wavetools.core.ecg_signal import ECGSignal
@@ -177,18 +179,29 @@ def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
     """
 
     _dh = diffusion_hyperparams
-    T, Alpha_bar = _dh["T"], _dh["Alpha_bar"]
+    T, Alpha_bar,Alpha,Sigma = _dh["T"], _dh["Alpha_bar"], _dh["Alpha"], _dh["Sigma"]
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    mel_loss = MelSpectrogramLoss(window_lengths=[512, 256], n_mels=[64, 128], loss_fn=torch.nn.L1Loss()).to(device)
     
     audio = X[0]
     label = X[1]
     B, C, L = audio.shape  # B is batchsize, C=1, L is audio length, C=8?
     diffusion_steps = torch.randint(T, size=(B,1,1)).cuda()  # randomly sample diffusion steps from 1~T
-    z = std_normal(audio.shape)  # do we wanna do this?
+    z = std_normal(audio.shape)
+    
+
     transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * audio + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z
     epsilon_theta = net((transformed_X, label, diffusion_steps.view(B,1),))  
+     
 
-    epsilon_theta_ECGSignal = ECGSignal(epsilon_theta, sample_rate=100) # shape is torch.Size([6, 8, 1000])
-    z_ECGSignal = ECGSignal(z, sample_rate=100) 
+    #reconstructing x
+    reconstructed_x = (transformed_X - (1-Alpha[T-1])/torch.sqrt(1-Alpha_bar[T-1]) * epsilon_theta) / torch.sqrt(Alpha[T-1])
 
-    loss = loss_fn(epsilon_theta_ECGSignal, z_ECGSignal)
-    return loss
+    #calculate mel loss
+    orig_x_signal = ECGSignal(audio, sample_rate = 100)
+    reconstructed_x_signal = ECGSignal(reconstructed_x, sample_rate = 100)
+    mel_loss_calc = mel_loss(reconstructed_x_signal,orig_x_signal)
+    # print("loss", mel_loss_calc)
+    
+    return loss_fn(epsilon_theta, z) +  mel_loss_calc*0.2
+

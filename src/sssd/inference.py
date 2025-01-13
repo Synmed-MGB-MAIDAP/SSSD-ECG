@@ -4,12 +4,14 @@ import json
 import numpy as np
 import torch
 import random
-
-from utils.util import find_max_epoch, print_size, sampling_label, calc_diffusion_hyperparams
+from pathlib import Path
 from models.SSSD_ECG import SSSD_ECG
+from utils.util import find_max_epoch, print_size, sampling_label, calc_diffusion_hyperparams
 
-data_path = '/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/Dataset/data'
-label_path = '/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/Dataset/labels'
+
+
+data_path = Path.home() / 'MGB-MAIDAP/models/SSSD-ECG/Dataset/data'
+label_path = Path.home() / 'MGB-MAIDAP/models/SSSD-ECG/Dataset/labels'
 
 def generate_four_leads(tensor):
     leadI = tensor[:,0,:].unsqueeze(1)

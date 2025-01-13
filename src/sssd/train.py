@@ -4,12 +4,23 @@ import json
 import numpy as np
 import torch
 import torch.nn as nn
-
-from utils.util import find_max_epoch, print_size, training_loss_label, calc_diffusion_hyperparams
+import warnings
+import wandb
+from pathlib import Path
 from models.SSSD_ECG import SSSD_ECG
+from utils.util import find_max_epoch, print_size, training_loss_label, calc_diffusion_hyperparams
+wandb.init(project="MGB_MAIDAP_spectral_loss", name="spectral_loss")
 
-data_path = '/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/Dataset/data'
-label_path = '/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/Dataset/labels'
+# Ignore a specific warning (e.g., deprecation warning)
+warnings.filterwarnings('ignore')
+warnings.filterwarnings('ignore', message='[pyKeOps] Warning : keyword argument dtype in Genred is deprecated ; argument is ignored.')
+
+
+
+
+
+data_path = Path.home() / 'MGB-MAIDAP/models/SSSD-ECG/Dataset/data'
+label_path = Path.home() / 'MGB-MAIDAP/models/SSSD-ECG/Dataset/labels'
 
 def train(output_directory,
           ckpt_iter,
@@ -37,6 +48,8 @@ def train(output_directory,
     local_path = "ch{}_T{}_betaT{}".format(model_config["res_channels"], 
                                            diffusion_config["T"], 
                                            diffusion_config["beta_T"])
+    
+
 
     # Get shared output_directory ready
     output_directory = os.path.join(output_directory, local_path)
@@ -47,6 +60,7 @@ def train(output_directory,
 
     # map diffusion hyperparameters to gpu
     for key in diffusion_hyperparams:
+        print(key)
         if key != "T":
             diffusion_hyperparams[key] = diffusion_hyperparams[key].cuda()
             
@@ -79,10 +93,21 @@ def train(output_directory,
         print('No valid checkpoint model found, start training from initialization.')
         
         
-    
+
     data_ptbxl = np.load(os.path.join(data_path, 'ptbxl_train_data.npy'))
     labels_ptbxl = np.load(os.path.join(label_path, 'ptbxl_train_labels.npy'))   
     
+    #subsample the dataset:
+    # indices = np.random.choice(data_ptbxl.shape[0], size=10, replace=False)
+
+    # # Select the 10 samples from the data and labels
+    # data_ptbxl = data_ptbxl[indices]  # Shape: (10, 12, 1000)
+    # labels_ptbxl = labels_ptbxl[indices]  # Shape: (10, 71)
+
+    # # Optionally, you can print or inspect the selected samples and labels
+    # print("Selected data shape:", data_ptbxl.shape)
+    # print("Selected labels shape:", labels_ptbxl.shape)
+
     train_data = []
     for i in range(len(data_ptbxl)):
         train_data.append([data_ptbxl[i], labels_ptbxl[i]])
@@ -92,15 +117,26 @@ def train(output_directory,
     index_8 = torch.tensor([0,2,3,4,5,6,7,11])
     index_4 = torch.tensor([1,8,9,10])
     
-    
+    # Log hyperparameters (optional)
+    wandb.config = {
+        "learning_rate": optimizer.param_groups[0]["lr"],
+        "batch_size": trainloader.batch_size if hasattr(trainloader, 'batch_size') else 'Unknown',
+        "n_iters": n_iters,
+        "iters_per_ckpt": iters_per_ckpt,
+        "iters_per_logging": iters_per_logging,
+    }
     # training
     n_iter = ckpt_iter + 1
     
     while n_iter < n_iters + 1:
+        
         for audio, label in trainloader:
             
             audio = torch.index_select(audio, 1, index_8).float().cuda()
             label = label.float().cuda()
+
+            # print(audio.shape)
+            # print(label.shape)
            
             
             # back-propagation
@@ -109,6 +145,8 @@ def train(output_directory,
             X = audio, label
             
             loss = training_loss_label(net, nn.MSELoss(), X, diffusion_hyperparams)
+            print("Iteration: ", n_iter, " loss: ",loss)
+            wandb.log({"iteration": n_iter, "loss": loss.item()})
 
             loss.backward()
             optimizer.step()
@@ -123,6 +161,9 @@ def train(output_directory,
                             'optimizer_state_dict': optimizer.state_dict()},
                            os.path.join(output_directory, checkpoint_name))
                 print('model at iteration %s is saved' % n_iter)
+                # Log the model checkpoint as an artifact to W&B
+                checkpoint_path = os.path.join(output_directory, checkpoint_name)
+                wandb.save(checkpoint_path)
 
             n_iter += 1
 

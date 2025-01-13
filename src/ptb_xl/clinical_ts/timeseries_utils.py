@@ -309,6 +309,7 @@ def reformat_as_memmap(df, target_filename, data_folder=None, annotation=False, 
     df_mapped[col_data]=np.arange(len(df_mapped))
 
     df_mapped.to_pickle(target_filename.parent/("df_"+target_filename.stem+".pkl"))
+    print("Saved df to", target_filename.parent/("df_"+target_filename.stem+".pkl"))
     return df_mapped
 
 class ConcatDatasetTimeseriesDatasetCrops(torch.utils.data.ConcatDataset):
@@ -390,7 +391,7 @@ class TimeseriesDatasetCrops(torch.utils.data.Dataset):
             self.memmap_length = memmap_meta["length"]
             self.memmap_file_idx = memmap_meta["file_idx"]
             self.memmap_dtype = np.dtype(str(memmap_meta["dtype"]))
-            self.memmap_filenames = np.array(memmap_meta["filenames"]).astype(np.string_)#save as byte to avoid issue with mp
+            self.memmap_filenames = np.array(memmap_meta["filenames"]).astype(np.bytes_) #save as byte to avoid issue with mp
             if(annotation):
                 memmap_meta_label = np.load(self.memmap_meta_filename.parent/("_".join(self.memmap_meta_filename.stem.split("_")[:-1])+"_label_meta.npz"), allow_pickle=True)
                 self.memmap_shape_label = memmap_meta_label["shape"]

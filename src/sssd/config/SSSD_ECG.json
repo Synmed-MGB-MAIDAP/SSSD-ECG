@@ -34,10 +34,10 @@
         "segment_length":1000,
         "sampling_rate": 100,
         "finetune_dataset":"ptbxl_all",
-        "data_path":"../Dataset"
+        "data_path":"/home/shared/ptbxl_data_sssd-ecg"
     },
     "gen_config":{
-        "output_directory": "/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/ckpt/sssd_label_cond",
-        "ckpt_path": "/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/ckpt/sssd_label_cond/"
+        "output_directory": "/home/shared/output_sssd-ecg",
+        "ckpt_path": "/home/shared/output_sssd-ecg"
     }
 }

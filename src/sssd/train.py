@@ -9,7 +9,7 @@ import wandb
 from pathlib import Path
 from models.SSSD_ECG import SSSD_ECG
 from utils.util import find_max_epoch, print_size, training_loss_label, calc_diffusion_hyperparams
-wandb.init(project="MGB_MAIDAP_spectral_loss", name="spectral_loss")
+wandb.init(project="MGB_MAIDAP_spectral_loss", name="spectral_loss_v1")
 
 # Ignore a specific warning (e.g., deprecation warning)
 warnings.filterwarnings('ignore')
@@ -60,7 +60,6 @@ def train(output_directory,
 
     # map diffusion hyperparameters to gpu
     for key in diffusion_hyperparams:
-        print(key)
         if key != "T":
             diffusion_hyperparams[key] = diffusion_hyperparams[key].cuda()
             
@@ -97,16 +96,7 @@ def train(output_directory,
     data_ptbxl = np.load(os.path.join(data_path, 'ptbxl_train_data.npy'))
     labels_ptbxl = np.load(os.path.join(label_path, 'ptbxl_train_labels.npy'))   
     
-    #subsample the dataset:
-    # indices = np.random.choice(data_ptbxl.shape[0], size=10, replace=False)
 
-    # # Select the 10 samples from the data and labels
-    # data_ptbxl = data_ptbxl[indices]  # Shape: (10, 12, 1000)
-    # labels_ptbxl = labels_ptbxl[indices]  # Shape: (10, 71)
-
-    # # Optionally, you can print or inspect the selected samples and labels
-    # print("Selected data shape:", data_ptbxl.shape)
-    # print("Selected labels shape:", labels_ptbxl.shape)
 
     train_data = []
     for i in range(len(data_ptbxl)):
@@ -145,14 +135,14 @@ def train(output_directory,
             X = audio, label
             
             loss = training_loss_label(net, nn.MSELoss(), X, diffusion_hyperparams)
-            print("Iteration: ", n_iter, " loss: ",loss)
-            wandb.log({"iteration": n_iter, "loss": loss.item()})
-
+            
             loss.backward()
             optimizer.step()
 
             if n_iter % iters_per_logging == 0:
                 print("iteration: {} \tloss: {}".format(n_iter, loss.item()))
+                wandb.log({"iteration": n_iter, "loss": loss.item()})
+
 
             # save checkpoint
             if n_iter > 0 and n_iter % iters_per_ckpt == 0:

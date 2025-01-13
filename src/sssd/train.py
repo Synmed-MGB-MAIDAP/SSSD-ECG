@@ -5,12 +5,12 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from utils.util import find_max_epoch, print_size, training_loss_label, calc_diffusion_hyperparams
 from models.SSSD_ECG import SSSD_ECG
+from wavetools.metrics.spectral import MelSpectrogramLoss
+from utils.util import find_max_epoch, print_size, training_loss_label, calc_diffusion_hyperparams
 
-data_path = '/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/Dataset/data'
-label_path = '/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/Dataset/labels'
-
+data_path = '/home/nutansahoo/MGB-MAIDAP/models/SSSD-ECG/Datasets'
+label_path = '/home/nutansahoo/MGB-MAIDAP/models/SSSD-ECG/Datasets'
 def train(output_directory,
           ckpt_iter,
           n_iters,
@@ -82,16 +82,34 @@ def train(output_directory,
     
     data_ptbxl = np.load(os.path.join(data_path, 'ptbxl_train_data.npy'))
     labels_ptbxl = np.load(os.path.join(label_path, 'ptbxl_train_labels.npy'))   
-    
+    data_ptbxl = np.transpose(data_ptbxl, (0, 2, 1))
     train_data = []
+    count=0
     for i in range(len(data_ptbxl)):
+        count+=1
+        if count>1000:
+            break
         train_data.append([data_ptbxl[i], labels_ptbxl[i]])
+    
         
     trainloader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=6, drop_last=True)
        
     index_8 = torch.tensor([0,2,3,4,5,6,7,11])
     index_4 = torch.tensor([1,8,9,10])
     
+    # define loss function
+    mel_loss = MelSpectrogramLoss(
+            window_lengths=[512],
+            n_mels=[64, 128],
+            mel_fmin=[0, 0],
+            mel_fmax=[200, 200],
+            loss_fn=torch.nn.L1Loss(),
+            clamp_eps=1e-5,
+            log_weight=1.0,
+            mag_weight=1.0,
+            weight=1.0,
+            pow=2,
+        )
     
     # training
     n_iter = ckpt_iter + 1
@@ -99,17 +117,16 @@ def train(output_directory,
     while n_iter < n_iters + 1:
         for audio, label in trainloader:
             
-            audio = torch.index_select(audio, 1, index_8).float().cuda()
-            label = label.float().cuda()
-           
+            audio = torch.index_select(audio, 1, index_8).float().cuda() # shape of audio becomes [6, 8, 1000]
+            label = label.float().cuda() # shape of label [6,71]
             
             # back-propagation
             optimizer.zero_grad()
             
             X = audio, label
             
-            loss = training_loss_label(net, nn.MSELoss(), X, diffusion_hyperparams)
-
+            loss = training_loss_label(net, mel_loss, X, diffusion_hyperparams)
+            
             loss.backward()
             optimizer.step()
 

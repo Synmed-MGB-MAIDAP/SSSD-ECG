@@ -49,7 +49,8 @@ def generate(output_directory,
     """
 
     # generate experiment (local) path
-    local_path = "ch{}_T{}_betaT{}".format(model_config["res_channels"], 
+    experiment_name = "reproduced"
+    local_path = "{}/ch{}_T{}_betaT{}".format(experiment_name, model_config["res_channels"], 
                                            diffusion_config["T"], 
                                            diffusion_config["beta_T"])
 
@@ -73,7 +74,7 @@ def generate(output_directory,
     ckpt_path = os.path.join(ckpt_path, local_path)
     if ckpt_iter == 'max':
         ckpt_iter = find_max_epoch(ckpt_path)
-    model_path = os.path.join(ckpt_path, '{}_download.pkl'.format(ckpt_iter))
+    model_path = os.path.join(ckpt_path, '{}.pkl'.format(ckpt_iter))
     try:
         checkpoint = torch.load(model_path, map_location='cpu')
         net.load_state_dict(checkpoint['model_state_dict'])
@@ -81,12 +82,9 @@ def generate(output_directory,
     except:
         raise Exception('No valid model found')
 
-   
-    labels = np.load(os.path.join(label_path, 'ptbxl_train_labels.npy'))
-    # save labels to a txt file
-    np.savetxt(os.path.join(label_path, 'ptbxl_train_labels.txt'), labels, fmt='%d')
+    label_path = os.path.join(data_path, 'labels')
+    labels = np.load(os.path.join(label_path, 'ptbxl_test_labels.npy'))
     
-    print(labels.shape)
     # break down labels into chunks of 400
 
     chunks = []
@@ -96,10 +94,11 @@ def generate(output_directory,
         else:
             chunks.append(labels[i:])
     
-    
+    print("Starting generation")
+    tik = time.time()
     for i, label in enumerate(chunks):
-        if i!=len(chunks)-1:
-            continue
+        # if i!=len(chunks)-1:
+        #     continue
         cond = torch.from_numpy(label).cuda().float()
 
         # inference
@@ -126,15 +125,20 @@ def generate(output_directory,
 
        
         outfile = f'{i}_samples.npy'
-        new_out = os.path.join(ckpt_path, outfile)
+        synth_data_path = os.path.join(ckpt_path, "synth_data")
+        if not os.path.exists(synth_data_path):
+            os.makedirs(synth_data_path)
+        new_out = os.path.join(synth_data_path, outfile)
         np.save(new_out, generated_audio12.detach().cpu().numpy())
         print('saved generated samples at iteration %s' % ckpt_iter)
         
         outfile = f'{i}_labels.npy'
-        new_out = os.path.join(ckpt_path, outfile)
+        new_out = os.path.join(synth_data_path, outfile)
         np.save(new_out, cond.detach().cpu().numpy())
         print('saved generated samples at iteration %s' % ckpt_iter)
 
+    tok = time.time()
+    print("Total time taken: ", tok-tik)
         
 
 if __name__ == "__main__":
@@ -169,16 +173,8 @@ if __name__ == "__main__":
 
     global model_config
     model_config = config['wavenet_config']
-
-    # generate(**gen_config,
-    #          ckpt_iter=args.ckpt_iter,
-    #          num_samples=args.num_samples,
-    #          use_model=train_config["use_model"],
-    #          data_path=trainset_config["data_path"],
-    #          masking=train_config["masking"],
-    #          missing_k=train_config["missing_k"])
     
     generate(**gen_config,
-             ckpt_iter=args.ckpt_iter,
-             num_samples=args.num_samples,
-             data_path=trainset_config["data_path"])
+                ckpt_iter=args.ckpt_iter,
+                num_samples=args.num_samples,
+                data_path=trainset_config["data_path"])

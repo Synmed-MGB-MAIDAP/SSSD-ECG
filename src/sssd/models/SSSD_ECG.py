@@ -175,7 +175,8 @@ class SSSD_ECG(nn.Module):
         
         # embedding for global conditioning
         self.embedding = nn.Embedding(label_embed_classes, label_embed_dim) if label_embed_classes>0 is not None else None
-                
+        # extend label_embed_classes (age, gender, etc are encoded as one-hot)
+        # self.embedding_age nn.Embedding()
         self.residual_layer = Residual_group(res_channels=res_channels, 
                                              skip_channels=skip_channels, 
                                              num_res_layers=num_res_layers, 

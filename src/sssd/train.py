@@ -92,15 +92,13 @@ def train(output_directory,
         print('No valid checkpoint model found, start training from initialization.')
         
         
-
     data_ptbxl = np.load(os.path.join(data_path, 'ptbxl_train_data.npy'))
     labels_ptbxl = np.load(os.path.join(label_path, 'ptbxl_train_labels.npy'))   
     
-
-
     train_data = []
     for i in range(len(data_ptbxl)):
         train_data.append([data_ptbxl[i], labels_ptbxl[i]])
+    
         
     trainloader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=6, drop_last=True)
        

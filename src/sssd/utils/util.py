@@ -1,10 +1,13 @@
 import os
+import sys
 import numpy as np
 import torch
 import random
 from wavetools.core import ECGSignal
 from wavetools.metrics.spectral import  MelSpectrogramLoss
 
+from wavetools.metrics.spectral import MelSpectrogramLoss
+from wavetools.core.ecg_signal import ECGSignal
 
 def flatten(v):
     """
@@ -182,7 +185,7 @@ def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
     
     audio = X[0]
     label = X[1]
-    B, C, L = audio.shape  # B is batchsize, C=1, L is audio length
+    B, C, L = audio.shape  # B is batchsize, C=1, L is audio length, C=8?
     diffusion_steps = torch.randint(T, size=(B,1,1)).cuda()  # randomly sample diffusion steps from 1~T
     z = std_normal(audio.shape)
     

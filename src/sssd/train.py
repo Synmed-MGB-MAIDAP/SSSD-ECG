@@ -130,7 +130,7 @@ def train(output_directory,
             
             X = audio, label
             
-            loss = training_loss_label(net, nn.MSELoss(), X, diffusion_hyperparams)
+            loss = training_loss_label(net, "MSE", X, diffusion_hyperparams)
             # wandb.log({'training loss': loss.item()})
             loss.backward()
             optimizer.step()

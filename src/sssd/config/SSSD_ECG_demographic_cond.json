@@ -40,5 +40,9 @@
     "gen_config":{
         "output_directory": "/home/shared/output_sssd-ecg",
         "ckpt_path": "/home/shared/output_sssd-ecg"
+    },
+    "project_config": {
+        "project_name": "SSSD-ECG",
+        "experiment_name": "condition_concatenate"
     }
 }

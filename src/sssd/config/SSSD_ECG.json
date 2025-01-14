@@ -22,7 +22,8 @@
         "label_embed_classes":71
     },
     "train_config": {
-        "output_directory": "sssd_label_cond",
+        "data_path": "/home/shared/ptbxl_data_sssd-ecg-dec",
+        "output_directory": "/home/shared/output_sssd-ecg-dec",
         "ckpt_iter": "max",
         "iters_per_ckpt": 4000,
         "iters_per_logging": 100,

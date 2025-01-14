@@ -112,6 +112,28 @@ def _sex_to_categorical(sex):
     sex_mapping = {"n/a":-1, "male":0, "female":1, "":-1}
     return sex_mapping[sex]
 
+def _height_to_categorical(height):
+    if(np.isnan(height)):
+        return -1
+    if(height<160):
+        return 0
+    if(height<170):
+        return 1
+    if(height<180):
+        return 2
+    return 3
+
+def _weight_to_categorical(weight):
+    if(np.isnan(weight)):
+        return -1
+    if(weight<60):
+        return 0
+    if(weight<80):
+        return 1
+    if(weight<100):
+        return 2
+    return 3
+
 def reformat_data_ptb(datafiles, target_fs=200, channels=12, channel_stoi=channel_stoi_default, lbl_itos=None, target_folder=None):
     rows = []
     for filename_in in tqdm(datafiles):
@@ -534,7 +556,7 @@ def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, chann
         # reading df
         ptb_xl_csv = data_path/"ptbxl_database.csv"
         df_ptb_xl=pd.read_csv(ptb_xl_csv,index_col="ecg_id")
-        #print(df_ptb_xl.columns)
+        print("df_ptb_xl columns", df_ptb_xl.columns)
         df_ptb_xl.scp_codes=df_ptb_xl.scp_codes.apply(lambda x: eval(x.replace("nan","np.nan")))
 
         # preparing labels
@@ -561,9 +583,14 @@ def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, chann
         df_ptb_xl["label_diag_subclass"]= df_ptb_xl.label_diag.apply(lambda x: [diag_subclass_mapping[y] for y in x if y in diag_subclass_mapping])
         df_ptb_xl["label_diag_superclass"]= df_ptb_xl.label_diag.apply(lambda x: [diag_class_mapping[y] for y in x if y in diag_class_mapping])
 
-        df_ptb_xl["dataset"]="ptb_xl"
+        df_ptb_xl["label_age"] = df_ptb_xl["age"].apply(lambda x:[_age_to_categorical(x)])
+        df_ptb_xl["label_sex"] = df_ptb_xl["sex"].apply(lambda x: [x])
+        df_ptb_xl["label_weight"] = df_ptb_xl["weight"].apply(lambda x: [_weight_to_categorical(x)])
+        df_ptb_xl["label_height"] = df_ptb_xl["height"].apply(lambda x: [_height_to_categorical(x)])
+
+        df_ptb_xl["dataset"]="ptb_xl_demographics"
         #filter and map (can be reapplied at any time)
-        df_ptb_xl, lbl_itos_ptb_xl =map_and_filter_labels(df_ptb_xl,min_cnt=min_cnt,lbl_cols=["label_all","label_diag","label_form","label_rhythm","label_diag_subclass","label_diag_superclass"])
+        df_ptb_xl, lbl_itos_ptb_xl =map_and_filter_labels(df_ptb_xl,min_cnt=min_cnt,lbl_cols=["label_all","label_diag","label_form","label_rhythm","label_diag_subclass","label_diag_superclass","label_age", "label_sex", "label_weight", "label_height"])
 
         filenames = []
         for id, row in tqdm(list(df_ptb_xl.iterrows())):

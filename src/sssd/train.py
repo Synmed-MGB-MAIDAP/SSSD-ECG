@@ -9,22 +9,19 @@ import wandb
 from pathlib import Path
 from models.SSSD_ECG import SSSD_ECG
 from utils.util import find_max_epoch, print_size, training_loss_label, calc_diffusion_hyperparams
-wandb.init(project="MGB_MAIDAP_spectral_loss", name="spectral_loss_v1")
+from utils.loss import mel_loss
+import wandb
 
-# Ignore a specific warning (e.g., deprecation warning)
-warnings.filterwarnings('ignore')
-warnings.filterwarnings('ignore', message='[pyKeOps] Warning : keyword argument dtype in Genred is deprecated ; argument is ignored.')
+project_name = "MGB_MAIDAP_reproduce"
+experiment_name = "condition_v1"
 
-
-
-
-
-data_path = Path.home() / 'MGB-MAIDAP/models/SSSD-ECG/Dataset/data'
-label_path = Path.home() / 'MGB-MAIDAP/models/SSSD-ECG/Dataset/labels'
-
+# wandb.init(project=project_name, name=experiment_name)
+# data_path = '/home/nutansahoo/MGB-MAIDAP/models/SSSD-ECG/Datasets'
+# label_path = '/home/nutansahoo/MGB-MAIDAP/models/SSSD-ECG/Datasets'
 def train(output_directory,
           ckpt_iter,
           n_iters,
+          data_path,
           iters_per_ckpt,
           iters_per_logging,
           learning_rate,
@@ -43,13 +40,14 @@ def train(output_directory,
     iters_per_logging (int):        number of iterations to save training log and compute validation loss, default is 100
     learning_rate (float):          learning rate
     """
-
-    # generate experiment (local) path
-    local_path = "ch{}_T{}_betaT{}".format(model_config["res_channels"], 
-                                           diffusion_config["T"], 
-                                           diffusion_config["beta_T"])
+    label_path = os.path.join(data_path, 'labels')
+    data_path = os.path.join(data_path, 'data')
     
-
+    # generate experiment (local) path
+    local_path = "{}/ch{}_T{}_betaT{}".format(experiment_name,
+                                              model_config["res_channels"], 
+                                              diffusion_config["T"], 
+                                              diffusion_config["beta_T"])
 
     # Get shared output_directory ready
     output_directory = os.path.join(output_directory, local_path)
@@ -106,13 +104,13 @@ def train(output_directory,
     index_4 = torch.tensor([1,8,9,10])
     
     # Log hyperparameters (optional)
-    wandb.config = {
-        "learning_rate": optimizer.param_groups[0]["lr"],
-        "batch_size": trainloader.batch_size if hasattr(trainloader, 'batch_size') else 'Unknown',
-        "n_iters": n_iters,
-        "iters_per_ckpt": iters_per_ckpt,
-        "iters_per_logging": iters_per_logging,
-    }
+    # wandb.config = {
+    #     "learning_rate": optimizer.param_groups[0]["lr"],
+    #     "batch_size": trainloader.batch_size if hasattr(trainloader, 'batch_size') else 'Unknown',
+    #     "n_iters": n_iters,
+    #     "iters_per_ckpt": iters_per_ckpt,
+    #     "iters_per_logging": iters_per_logging,
+    # }
     # training
     n_iter = ckpt_iter + 1
     
@@ -133,7 +131,7 @@ def train(output_directory,
             X = audio, label
             
             loss = training_loss_label(net, nn.MSELoss(), X, diffusion_hyperparams)
-            
+            # wandb.log({'training loss': loss.item()})
             loss.backward()
             optimizer.step()
 
@@ -148,6 +146,7 @@ def train(output_directory,
                 torch.save({'model_state_dict': net.state_dict(),
                             'optimizer_state_dict': optimizer.state_dict()},
                            os.path.join(output_directory, checkpoint_name))
+                # wandb.save('model.pth')
                 print('model at iteration %s is saved' % n_iter)
                 # Log the model checkpoint as an artifact to W&B
                 checkpoint_path = os.path.join(output_directory, checkpoint_name)
@@ -158,7 +157,7 @@ def train(output_directory,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG.json',
+    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond.json',
                         help='JSON file for configuration')
 
     args = parser.parse_args()
@@ -183,7 +182,6 @@ if __name__ == "__main__":
 
     global model_config
     model_config = config['wavenet_config']
-
 
     train(**train_config)
 

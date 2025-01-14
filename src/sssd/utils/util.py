@@ -6,7 +6,6 @@ import random
 from wavetools.core import ECGSignal
 from wavetools.metrics.spectral import  MelSpectrogramLoss
 
-from wavetools.metrics.spectral import MelSpectrogramLoss
 from wavetools.core.ecg_signal import ECGSignal
 
 def flatten(v):

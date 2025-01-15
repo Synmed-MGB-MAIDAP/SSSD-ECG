@@ -89,50 +89,88 @@ def get_filename_out(filename_in, target_folder=None, suffix=""):
     return filename_out, filename_out_relative
 
 # Cell
-def _age_to_categorical(age):
-    if(np.isnan(age)):
-        label_age = -1
-    elif(age<30):
-        label_age = 0
-    elif(age<40):
-        label_age = 1
-    elif(age<50):
-        label_age = 2
-    elif(age<60):
-        label_age = 3
-    elif(age<70):
-        label_age = 4
-    elif(age<80):
-        label_age = 5
-    else:
-        label_age = 6
-    return label_age
+def _age_to_categorical(age, thresholds=None, labels=None):
+    """
+    Convert age to a categorical label based on customizable thresholds.
+
+    Parameters:
+        age (float): The age value to categorize.
+        thresholds (list): List of age thresholds for binning. Must be sorted in ascending order.
+        labels (list): List of labels corresponding to each bin. Must have len(thresholds) + 1.
+        
+    Returns:
+        int: The categorical label for the given age.
+    """
+    if np.isnan(age):
+        return -1  # Default label for missing age
+    
+    if thresholds is None:
+        thresholds = [30, 40, 50, 60, 70, 80]  # Default thresholds
+    if labels is None:
+        labels = list(range(len(thresholds) + 1))  # Default labels [0, 1, 2, ...]
+    print(len(thresholds),len(labels))
+    for i, threshold in enumerate(thresholds):
+        if age < threshold:
+            return labels[i]
+    print("age larger than last threshold")
+    return labels[-1]
+
 
 def _sex_to_categorical(sex):
     sex_mapping = {"n/a":-1, "male":0, "female":1, "":-1}
     return sex_mapping[sex]
 
-def _height_to_categorical(height):
-    if(np.isnan(height)):
-        return -1
-    if(height<160):
-        return 0
-    if(height<170):
-        return 1
-    if(height<180):
-        return 2
-    return 3
+def _height_to_categorical(height, thresholds=None, labels=None):
+    """
+    Convert height to a categorical label based on customizable thresholds.
 
-def _weight_to_categorical(weight):
-    if(np.isnan(weight)):
-        return -1
-    if(weight<60):
-        return 0
-    if(weight<80):
-        return 1
-    if(weight<100):
-        return 2
-    return 3
+    Parameters:
+        height (float): The height value to categorize.
+        thresholds (list): List of height thresholds for binning. Must be sorted in ascending order.
+        labels (list): List of labels corresponding to each bin. Must have len(thresholds) + 1.
+
+    Returns:
+        int: The categorical label for the given height.
+    """
+    if np.isnan(height):
+        return -1  # Default label for missing height
+    
+    if thresholds is None:
+        thresholds = [160, 170, 180]  # Default thresholds
+    if labels is None:
+        labels = list(range(len(thresholds) + 1))  # Default labels [0, 1, 2, ...]
+
+    for i, threshold in enumerate(thresholds):
+        if height < threshold:
+            return labels[i]
+    return labels[-1]
+
+
+def _weight_to_categorical(weight, thresholds=None, labels=None):
+    """
+    Convert weight to a categorical label based on customizable thresholds.
+
+    Parameters:
+        weight (float): The weight value to categorize.
+        thresholds (list): List of weight thresholds for binning. Must be sorted in ascending order.
+        labels (list): List of labels corresponding to each bin. Must have len(thresholds) + 1.
+
+    Returns:
+        int: The categorical label for the given weight.
+    """
+    if np.isnan(weight):
+        return -1  # Default label for missing weight
+    
+    if thresholds is None:
+        thresholds = [60, 80, 100]  # Default thresholds
+    if labels is None:
+        labels = list(range(len(thresholds) + 1))  # Default labels [0, 1, 2, ...]
+
+    for i, threshold in enumerate(thresholds):
+        if weight < threshold:
+            return labels[i]
+    return labels[-1]
+
 
 def reformat_data_ptb(datafiles, target_fs=200, channels=12, channel_stoi=channel_stoi_default, lbl_itos=None, target_folder=None):
     rows = []
@@ -547,7 +585,7 @@ def prepare_data_icbeb(data_folder, target_folder=None, channel_stoi=channel_sto
     return df_icbeb,lbl_itos_icbeb, mean_icbeb, std_icbeb
 
 # Cell
-def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, channel_stoi=channel_stoi_default, target_folder=None, recreate_data=True):
+def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, channel_stoi=channel_stoi_default, target_folder=None, recreate_data=True, thresholds=None):
     target_root_ptb_xl = Path(".") if target_folder is None else target_folder
     #print(target_root_ptb_xl)
     target_root_ptb_xl.mkdir(parents=True, exist_ok=True)
@@ -583,16 +621,22 @@ def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, chann
         df_ptb_xl["label_diag_subclass"]= df_ptb_xl.label_diag.apply(lambda x: [diag_subclass_mapping[y] for y in x if y in diag_subclass_mapping])
         df_ptb_xl["label_diag_superclass"]= df_ptb_xl.label_diag.apply(lambda x: [diag_class_mapping[y] for y in x if y in diag_class_mapping])
 
-        df_ptb_xl["label_age"] = df_ptb_xl["age"].apply(lambda x:[_age_to_categorical(x)])
+        if thresholds is not None:
+            age_threshold = thresholds["age"] if "age" in thresholds else None
+            weight_threshold = thresholds["weight"] if "weight" in thresholds else None
+            height_threshold = thresholds["height"] if "height" in thresholds else None
+
+        df_ptb_xl["label_age"] = df_ptb_xl["age"].apply(lambda x:[_age_to_categorical(x, age_threshold)])
         df_ptb_xl["label_sex"] = df_ptb_xl["sex"].apply(lambda x: [x])
-        df_ptb_xl["label_weight"] = df_ptb_xl["weight"].apply(lambda x: [_weight_to_categorical(x)])
-        df_ptb_xl["label_height"] = df_ptb_xl["height"].apply(lambda x: [_height_to_categorical(x)])
+        df_ptb_xl["label_weight"] = df_ptb_xl["weight"].apply(lambda x: [_weight_to_categorical(x, weight_threshold)])
+        df_ptb_xl["label_height"] = df_ptb_xl["height"].apply(lambda x: [_height_to_categorical(x, height_threshold)])
 
         df_ptb_xl["dataset"]="ptb_xl_demographics"
         #filter and map (can be reapplied at any time)
         df_ptb_xl, lbl_itos_ptb_xl =map_and_filter_labels(df_ptb_xl,min_cnt=min_cnt,lbl_cols=["label_all","label_diag","label_form","label_rhythm","label_diag_subclass","label_diag_superclass","label_age", "label_sex", "label_weight", "label_height"])
 
         filenames = []
+        iter = 0
         for id, row in tqdm(list(df_ptb_xl.iterrows())):
             # always start from 500Hz and sample down
             filename = data_path/row["filename_hr"] #data_path/row["filename_lr"] if target_fs<=100 else data_path/row["filename_hr"]
@@ -601,7 +645,17 @@ def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, chann
             assert(target_fs<=header['fs'])
             np.save(target_root_ptb_xl/(filename.stem+".npy"),data)
             filenames.append(Path(filename.stem+".npy"))
+            iter += 1
+        #     if iter > 10:
+        #         break
+        # df_ptb_xl = df_ptb_xl[:iter]
         df_ptb_xl["data"] = filenames
+
+        # print out the statistics value count of the age, sex, height and weight
+        print("Age value counts: ", df_ptb_xl["label_age"].value_counts())
+        print("Sex value counts: ", df_ptb_xl["label_sex"].value_counts())
+        print("Weight value counts: ", df_ptb_xl["label_weight"].value_counts())
+        print("Height value counts: ", df_ptb_xl["label_height"].value_counts())
 
         #add means and std
         dataset_add_mean_col(df_ptb_xl,data_folder=target_root_ptb_xl)

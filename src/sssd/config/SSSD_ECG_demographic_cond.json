@@ -35,11 +35,11 @@
         "segment_length":1000,
         "sampling_rate": 100,
         "finetune_dataset":"ptbxl_all",
-        "data_path":"/home/shared/ptbxl_data_sssd-ecg"
+        "data_path":"/home/shared/ptbxl_data_sssd-ecg/condition_v1"
     },
     "gen_config":{
-        "output_directory": "/home/shared/output_sssd-ecg",
-        "ckpt_path": "/home/shared/output_sssd-ecg"
+        "output_directory": "/home/shared/output_sssd-ecg-dec/condition_v1",
+        "ckpt_path": "/home/shared/output_sssd-ecg-dec/condition_v1"
     },
     "project_config": {
         "project_name": "SSSD-ECG",

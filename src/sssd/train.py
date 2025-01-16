@@ -1,13 +1,31 @@
 import os
+import ecg_plot
 import argparse
 import json
 import numpy as np
 import torch
 import wandb
 from models.SSSD_ECG import SSSD_ECG
+import matplotlib.pyplot as plt
+from pathlib import Path
 from utils.util import find_max_epoch, training_loss_label, calc_diffusion_hyperparams
+wandb.init(project="MGB_MAIDAP_spectral_loss", name="spectral_loss_v6")
+import warnings
+# Ignore a specific warning (e.g., deprecation warning)
+warnings.filterwarnings('ignore')
+warnings.filterwarnings('ignore', message='[pyKeOps] Warning : keyword argument dtype in Genred is deprecated ; argument is ignored.')
 
-import wandb
+
+data_path = Path.home() / 'MGB-MAIDAP/models/SSSD-ECG/Dataset/data'
+label_path = Path.home() / 'MGB-MAIDAP/models/SSSD-ECG/Dataset/labels'
+
+
+
+def plot_ecg(signal, filepath):
+    signal = signal.numpy()[0]
+    ecg_plot.plot(signal, sample_rate = 100)
+    plt.savefig(filepath, format="jpeg")
+
 
 def train(output_directory,
           ckpt_iter,
@@ -59,6 +77,8 @@ def train(output_directory,
             
     # predefine model
     net = SSSD_ECG(**model_config).cuda()
+
+    wandb.watch(net, log="all", log_freq=100)
     
     # define optimizer
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
@@ -94,7 +114,7 @@ def train(output_directory,
         train_data.append([data_ptbxl[i], labels_ptbxl[i]])
     
         
-    trainloader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=6, drop_last=True)
+    trainloader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=batch_size, drop_last=True)
        
     index_8 = torch.tensor([0,2,3,4,5,6,7,11])
     index_4 = torch.tensor([1,8,9,10])
@@ -122,14 +142,22 @@ def train(output_directory,
             
             X = audio, label
             
-            loss = training_loss_label(net, "MSE", X, diffusion_hyperparams)
-            # wandb.log({'training loss': loss.item()})
+            loss, mel, mse,orig_x_signal,reconstructed_x_signal = training_loss_label(net, torch.nn.MSELoss(), X, diffusion_hyperparams)
+            
             loss.backward()
             optimizer.step()
 
             if n_iter % iters_per_logging == 0:
                 print("iteration: {} \tloss: {}".format(n_iter, loss.item()))
-                wandb.log({"iteration": n_iter, "loss": loss.item()})
+                
+                original_x_path = Path.home() / f'MGB-MAIDAP/models/SSSD-ECG/signal_plot/original_x_{n_iter}_{loss.item()}.jpg'
+                reconstructed_x_path = Path.home() / f'MGB-MAIDAP/models/SSSD-ECG/signal_plot/recontructed_x_{n_iter}_{loss.item()}.jpg'
+                plot_ecg(orig_x_signal, original_x_path)
+                plot_ecg(reconstructed_x_signal, reconstructed_x_path)
+
+                orig_x_im = plt.imread(original_x_path)
+                recon_x_im = plt.imread(reconstructed_x_path)
+                wandb.log({"iteration": n_iter, "loss": loss.item(), "mel_loss": mel.item(), "mse_loss" : mse.item(),"original_signal": [wandb.Image(orig_x_im, caption=f"original_signal_{n_iter}_{loss.item()}.jpg'")],"reconstructed_signal": [wandb.Image(recon_x_im, caption=f"recontructed_signal_{n_iter}_{loss.item()}.jpg'")] })
 
 
             # save checkpoint

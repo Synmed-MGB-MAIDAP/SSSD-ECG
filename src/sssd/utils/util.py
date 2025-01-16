@@ -8,6 +8,9 @@ from wavetools.metrics.spectral import  MelSpectrogramLoss
 
 from wavetools.core.ecg_signal import ECGSignal
 
+
+
+
 def flatten(v):
     """
     Flatten a list of lists/tuples
@@ -180,6 +183,10 @@ def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
     _dh = diffusion_hyperparams
     T, Alpha_bar,Alpha,Sigma = _dh["T"], _dh["Alpha_bar"], _dh["Alpha"], _dh["Sigma"]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # mel_loss = MelSpectrogramLoss(window_lengths=[32, 64], n_mels=[10, 40], loss_fn=torch.nn.L1Loss()).to(device) #run 5
+    mel_loss = MelSpectrogramLoss(window_lengths=[64], n_mels=[16], loss_fn=torch.nn.L1Loss()).to(device) #we can put window size  of 64 and n_mels = 16 #run6
+
+
     audio = X[0]
     label = X[1]
     B, C, L = audio.shape  # B is batchsize, C=1, L is audio length, C=8?
@@ -192,16 +199,17 @@ def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
     if loss_fn == "mel_loss":
         mel_loss = MelSpectrogramLoss(window_lengths=[512, 256], n_mels=[64, 128], loss_fn=torch.nn.L1Loss()).to(device)  
 
-        #reconstructing x
-        reconstructed_x = (transformed_X - (1-Alpha[T-1])/torch.sqrt(1-Alpha_bar[T-1]) * epsilon_theta) / torch.sqrt(Alpha[T-1])
+    #reconstructing x
+    # reconstructed_x = (transformed_X - (1-Alpha[diffusion_steps])/torch.sqrt(1-Alpha_bar[diffusion_steps]) * epsilon_theta) / torch.sqrt(Alpha[diffusion_steps])
+    reconstructed_x = (transformed_X - (1-Alpha[diffusion_steps])/torch.sqrt(1-Alpha_bar[diffusion_steps]) * epsilon_theta) / torch.sqrt(Alpha[diffusion_steps])
+ 
+    #calculate mel loss
+    orig_x_signal = ECGSignal(audio, sample_rate = 100)
+    reconstructed_x_signal = ECGSignal(reconstructed_x, sample_rate = 100)
+    mel_loss_calc = mel_loss(reconstructed_x_signal,orig_x_signal)
+    print("loss", mel_loss_calc)
+    print("mse loss", loss_fn(epsilon_theta, z))
 
-        #calculate mel loss
-        orig_x_signal = ECGSignal(audio, sample_rate = 100)
-        reconstructed_x_signal = ECGSignal(reconstructed_x, sample_rate = 100)
-        mel_loss_calc = mel_loss(reconstructed_x_signal,orig_x_signal)
-        loss = mse_loss_fn(epsilon_theta, z) +  mel_loss_calc*0.2
-    else:
-        loss = mse_loss_fn(epsilon_theta, z)
-    
-    return loss
+    # return loss_fn(epsilon_theta, z) +  mel_loss_calc*0.2, mel_loss_calc, loss_fn(epsilon_theta, z),orig_x_signal,reconstructed_x_signal #run5
+    return loss_fn(epsilon_theta, z) +  mel_loss_calc*0.02, mel_loss_calc, loss_fn(epsilon_theta, z),orig_x_signal,reconstructed_x_signal #run6
 

@@ -4,14 +4,11 @@ import json
 import numpy as np
 import torch
 import random
+import time
 from pathlib import Path
 from models.SSSD_ECG import SSSD_ECG
 from utils.util import find_max_epoch, print_size, sampling_label, calc_diffusion_hyperparams
 
-
-
-data_path = Path.home() / 'MGB-MAIDAP/models/SSSD-ECG/Dataset/data'
-label_path = Path.home() / 'MGB-MAIDAP/models/SSSD-ECG/Dataset/labels'
 
 def generate_four_leads(tensor):
     leadI = tensor[:,0,:].unsqueeze(1)
@@ -49,8 +46,8 @@ def generate(output_directory,
     """
 
     # generate experiment (local) path
-    experiment_name = "reproduced"
-    local_path = "{}/ch{}_T{}_betaT{}".format(experiment_name, model_config["res_channels"], 
+    # experiment_name = "raw"
+    local_path = "ch{}_T{}_betaT{}".format(model_config["res_channels"], 
                                            diffusion_config["T"], 
                                            diffusion_config["beta_T"])
 
@@ -143,7 +140,7 @@ def generate(output_directory,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG.json',
+    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond.json',
                         help='JSON file for configuration')
     parser.add_argument('-ckpt_iter', '--ckpt_iter', default=100000,
                         help='Which checkpoint to use; assign a number or "max"')

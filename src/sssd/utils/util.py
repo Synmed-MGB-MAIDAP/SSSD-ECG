@@ -6,7 +6,6 @@ import random
 from wavetools.core import ECGSignal
 from wavetools.metrics.spectral import  MelSpectrogramLoss
 
-from wavetools.metrics.spectral import MelSpectrogramLoss
 from wavetools.core.ecg_signal import ECGSignal
 
 
@@ -172,7 +171,7 @@ def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
 
     Parameters:
     net (torch network):            the wavenet model
-    loss_fn (torch loss function):  the loss function, default is nn.MSELoss()
+    loss_fn (string):  the loss function type, default is MSE loss
     X (torch.tensor):               training data, shape=(batchsize, 1, length of audio)
     diffusion_hyperparams (dict):   dictionary of diffusion hyperparameters returned by calc_diffusion_hyperparams
                                     note, the tensors need to be cuda tensors       
@@ -193,11 +192,12 @@ def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
     B, C, L = audio.shape  # B is batchsize, C=1, L is audio length, C=8?
     diffusion_steps = torch.randint(T, size=(B,1,1)).cuda()  # randomly sample diffusion steps from 1~T
     z = std_normal(audio.shape)
-    
 
     transformed_X = torch.sqrt(Alpha_bar[diffusion_steps]) * audio + torch.sqrt(1-Alpha_bar[diffusion_steps]) * z
     epsilon_theta = net((transformed_X, label, diffusion_steps.view(B,1),))  
-     
+    mse_loss_fn = torch.nn.MSELoss()
+    if loss_fn == "mel_loss":
+        mel_loss = MelSpectrogramLoss(window_lengths=[512, 256], n_mels=[64, 128], loss_fn=torch.nn.L1Loss()).to(device)  
 
     #reconstructing x
     # reconstructed_x = (transformed_X - (1-Alpha[diffusion_steps])/torch.sqrt(1-Alpha_bar[diffusion_steps]) * epsilon_theta) / torch.sqrt(Alpha[diffusion_steps])

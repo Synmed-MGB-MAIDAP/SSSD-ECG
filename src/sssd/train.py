@@ -4,15 +4,13 @@ import argparse
 import json
 import numpy as np
 import torch
-import torch.nn as nn
-import warnings
 import wandb
-from pathlib import Path
 from models.SSSD_ECG import SSSD_ECG
 import matplotlib.pyplot as plt
-from utils.util import find_max_epoch, print_size, training_loss_label, calc_diffusion_hyperparams
+from pathlib import Path
+from utils.util import find_max_epoch, training_loss_label, calc_diffusion_hyperparams
 wandb.init(project="MGB_MAIDAP_spectral_loss", name="spectral_loss_v6")
-
+import warnings
 # Ignore a specific warning (e.g., deprecation warning)
 warnings.filterwarnings('ignore')
 warnings.filterwarnings('ignore', message='[pyKeOps] Warning : keyword argument dtype in Genred is deprecated ; argument is ignored.')
@@ -32,10 +30,13 @@ def plot_ecg(signal, filepath):
 def train(output_directory,
           ckpt_iter,
           n_iters,
+          data_path,
           iters_per_ckpt,
           iters_per_logging,
           learning_rate,
-         batch_size):
+         batch_size,
+         project_name,
+         experiment_name,):
   
     """
     Train Diffusion Models
@@ -51,12 +52,16 @@ def train(output_directory,
     learning_rate (float):          learning rate
     """
 
-    # generate experiment (local) path
-    local_path = "ch{}_T{}_betaT{}".format(model_config["res_channels"], 
-                                           diffusion_config["T"], 
-                                           diffusion_config["beta_T"])
-    
+    wandb.init(project=project_name, name=experiment_name)
 
+    label_path = os.path.join(data_path, 'labels')
+    data_path = os.path.join(data_path, 'data')
+    
+    # generate experiment (local) path
+    local_path = "{}/ch{}_T{}_betaT{}".format(experiment_name,
+                                              model_config["res_channels"], 
+                                              diffusion_config["T"], 
+                                              diffusion_config["beta_T"])
 
     # Get shared output_directory ready
     output_directory = os.path.join(output_directory, local_path)
@@ -131,17 +136,13 @@ def train(output_directory,
             
             audio = torch.index_select(audio, 1, index_8).float().cuda()
             label = label.float().cuda()
-
-            # print(audio.shape)
-            # print(label.shape)
-           
             
             # back-propagation
             optimizer.zero_grad()
             
             X = audio, label
             
-            loss, mel, mse,orig_x_signal,reconstructed_x_signal = training_loss_label(net, nn.MSELoss(), X, diffusion_hyperparams)
+            loss, mel, mse,orig_x_signal,reconstructed_x_signal = training_loss_label(net, torch.nn.MSELoss(), X, diffusion_hyperparams)
             
             loss.backward()
             optimizer.step()
@@ -165,6 +166,7 @@ def train(output_directory,
                 torch.save({'model_state_dict': net.state_dict(),
                             'optimizer_state_dict': optimizer.state_dict()},
                            os.path.join(output_directory, checkpoint_name))
+                # wandb.save('model.pth')
                 print('model at iteration %s is saved' % n_iter)
                 # Log the model checkpoint as an artifact to W&B
                 checkpoint_path = os.path.join(output_directory, checkpoint_name)
@@ -175,7 +177,7 @@ def train(output_directory,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG.json',
+    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond_v2.json',
                         help='JSON file for configuration')
 
     args = parser.parse_args()
@@ -201,6 +203,8 @@ if __name__ == "__main__":
     global model_config
     model_config = config['wavenet_config']
 
+    global project_config
+    project_config = config['project_config']
 
-    train(**train_config)
+    train(**train_config, **project_config)
 

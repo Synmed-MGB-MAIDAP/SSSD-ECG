@@ -108,11 +108,9 @@ def _age_to_categorical(age, thresholds=None, labels=None):
         thresholds = [30, 40, 50, 60, 70, 80]  # Default thresholds
     if labels is None:
         labels = list(range(len(thresholds) + 1))  # Default labels [0, 1, 2, ...]
-    print(len(thresholds),len(labels))
     for i, threshold in enumerate(thresholds):
         if age < threshold:
             return labels[i]
-    print("age larger than last threshold")
     return labels[-1]
 
 
@@ -168,6 +166,31 @@ def _weight_to_categorical(weight, thresholds=None, labels=None):
 
     for i, threshold in enumerate(thresholds):
         if weight < threshold:
+            return labels[i]
+    return labels[-1]
+
+def _bmi_to_categorical(bmi, thresholds=None, labels=None):
+    """
+    Convert BMI to a categorical label based on customizable thresholds.
+
+    Parameters:
+        bmi (float): The BMI value to categorize.
+        thresholds (list): List of BMI thresholds for binning. Must be sorted in ascending order.
+        labels (list): List of labels corresponding to each bin. Must have len(thresholds) + 1.
+
+    Returns:
+        int: The categorical label for the given BMI.
+    """
+    if np.isnan(bmi):
+        return -1  # Default label for missing BMI
+    
+    if thresholds is None:
+        thresholds = [18.5, 25, 30]  # Default thresholds
+    if labels is None:
+        labels = list(range(len(thresholds) + 1))  # Default labels [0, 1, 2, ...]
+
+    for i, threshold in enumerate(thresholds):
+        if bmi < threshold:
             return labels[i]
     return labels[-1]
 
@@ -625,7 +648,11 @@ def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, chann
             age_threshold = thresholds["age"] if "age" in thresholds else None
             weight_threshold = thresholds["weight"] if "weight" in thresholds else None
             height_threshold = thresholds["height"] if "height" in thresholds else None
-
+            bmi_threshold = thresholds["bmi"] if "bmi" in thresholds else None
+        
+        # calculate bmi and take care of the missing values of height or weight
+        df_ptb_xl["bmi"] = df_ptb_xl["weight"]/((df_ptb_xl["height"]/100)**2)
+        df_ptb_xl["label_bmi"] = df_ptb_xl["bmi"].apply(lambda x: [_bmi_to_categorical(x, bmi_threshold)])
         df_ptb_xl["label_age"] = df_ptb_xl["age"].apply(lambda x:[_age_to_categorical(x, age_threshold)])
         df_ptb_xl["label_sex"] = df_ptb_xl["sex"].apply(lambda x: [x])
         df_ptb_xl["label_weight"] = df_ptb_xl["weight"].apply(lambda x: [_weight_to_categorical(x, weight_threshold)])
@@ -633,7 +660,13 @@ def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, chann
 
         df_ptb_xl["dataset"]="ptb_xl_demographics"
         #filter and map (can be reapplied at any time)
-        df_ptb_xl, lbl_itos_ptb_xl =map_and_filter_labels(df_ptb_xl,min_cnt=min_cnt,lbl_cols=["label_all","label_diag","label_form","label_rhythm","label_diag_subclass","label_diag_superclass","label_age", "label_sex", "label_weight", "label_height"])
+
+        # currently only use either bmi or aget + sex + height + weight
+        #TODO: add customized combinations of labels in the future
+        if bmi_threshold:
+            df_ptb_xl, lbl_itos_ptb_xl =map_and_filter_labels(df_ptb_xl,min_cnt=min_cnt,lbl_cols=["label_all","label_diag","label_form","label_rhythm","label_diag_subclass","label_diag_superclass","label_bmi"])
+        else:
+            df_ptb_xl, lbl_itos_ptb_xl =map_and_filter_labels(df_ptb_xl,min_cnt=min_cnt,lbl_cols=["label_all","label_diag","label_form","label_rhythm","label_diag_subclass","label_diag_superclass","label_age", "label_sex", "label_weight", "label_height"])
 
         filenames = []
         iter = 0

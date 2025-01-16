@@ -2,8 +2,9 @@ from clinical_ts.timeseries_utils import *
 from clinical_ts.ecg_utils import *
 from pathlib import Path
 import numpy as np
+import os
 
-threshold_version = "condition_v3"
+threshold_version = "condition_bmi"
 
 target_fs=100 # sampling rate (100 Hz or 500 Hz)
 data_folder_ptb_xl = Path("/home/shared/physionet.org/files/ptb-xl/1.0.3")
@@ -29,8 +30,22 @@ thresholds_v3 = {
     "height": [150, 159, 169, 179],
 }
 
+# bmi thresholds 71+7
+threshold_bmi = {
+    "bmi": [18.5, 25, 30, 35, 40]
+}
+
+if threshold_version == "condition_v1":
+    threshold_selected = thresholds_v1
+elif threshold_version == "condition_v2":
+    threshold_selected = thresholds_v2
+elif threshold_version == "condition_v3":
+    threshold_selected = thresholds_v3
+elif threshold_version == "condition_bmi":
+    threshold_selected = threshold_bmi
+
 # Prepare the dataset
-df_ptb_xl, lbl_itos_ptb_xl,  mean_ptb_xl, std_ptb_xl = prepare_data_ptb_xl(data_folder_ptb_xl, min_cnt=0, target_fs=target_fs, channels=12, channel_stoi=channel_stoi_default, target_folder=target_folder_ptb_xl, thresholds=thresholds_v3)
+df_ptb_xl, lbl_itos_ptb_xl,  mean_ptb_xl, std_ptb_xl = prepare_data_ptb_xl(data_folder_ptb_xl, min_cnt=0, target_fs=target_fs, channels=12, channel_stoi=channel_stoi_default, target_folder=target_folder_ptb_xl, thresholds=threshold_selected)
 
 print(lbl_itos_ptb_xl.keys())
 
@@ -82,7 +97,10 @@ all_meta_labels = ['patient_id', 'age', 'sex', 'height', 'weight', 'nurse', 'sit
        'label_diag_superclass_numeric', 'data', 'data_mean', 'data_std',
        'data_length']
 
-ptb_xl_label_demographcis = ["label_all", "label_age", "label_sex", "label_height", "label_weight"]
+if "bmi" in threshold_selected:
+    ptb_xl_label_demographcis = ["label_all", "label_bmi"]
+else:
+    ptb_xl_label_demographcis = ["label_all", "label_age", "label_sex", "label_height", "label_weight"]
 # Label all has 71 classes, label age has 7 classes, label sex has 2 classes, label height has 5 classes, label weight has 5 classes
 
 df_mapped["label"] = df_mapped.apply(
@@ -111,6 +129,13 @@ df_train["label"].iloc[0]
 ds_train=TimeseriesDatasetCrops(df_train,input_size,num_classes=len(lbl_itos),data_folder=target_folder_ptb_xl,chunk_length=chunk_length_train,min_chunk_length=input_size, stride=stride_train,transforms=tfms_ptb_xl_cpc,annotation=False,col_lbl ="label" ,memmap_filename=target_folder_ptb_xl/("memmap.npy"))
 ds_val=TimeseriesDatasetCrops(df_val,input_size,num_classes=len(lbl_itos),data_folder=target_folder_ptb_xl,chunk_length=chunk_length_valtest,min_chunk_length=input_size, stride=stride_valtest,transforms=tfms_ptb_xl_cpc,annotation=False,col_lbl ="label",memmap_filename=target_folder_ptb_xl/("memmap.npy"))
 ds_test=TimeseriesDatasetCrops(df_test,input_size,num_classes=len(lbl_itos),data_folder=target_folder_ptb_xl,chunk_length=chunk_length_valtest,min_chunk_length=input_size, stride=stride_valtest,transforms=tfms_ptb_xl_cpc,annotation=False,col_lbl ="label",memmap_filename=target_folder_ptb_xl/("memmap.npy"))
+
+if not os.path.exists(target_folder_ptb_xl/"data"):
+    print("Creating folders", target_folder_ptb_xl/"data")
+    os.makedirs(target_folder_ptb_xl/"data")
+if not os.path.exists(target_folder_ptb_xl/"labels"):
+    print("Creating folders", target_folder_ptb_xl/"labels")
+    os.makedirs(target_folder_ptb_xl/"labels")
 
 # Save splits into npy files with data and labels
 train_data_npy = []
@@ -147,7 +172,7 @@ np.save(target_folder_ptb_xl/"data/ptbxl_test_data.npy", test_data_npy)
 np.save(target_folder_ptb_xl/"labels/ptbxl_test_labels.npy", test_label_npy)
 
 # Load and check the shape of the saved npy files
-train_data = np.load(target_folder_ptb_xl/f"{threshold_version}/ptbxl_train_data.npy")
-train_labels = np.load(target_folder_ptb_xl/f"{threshold_version}/ptbxl_train_labels.npy")
+train_data = np.load(target_folder_ptb_xl/"data/ptbxl_train_data.npy")
+train_labels = np.load(target_folder_ptb_xl/"labels/ptbxl_train_labels.npy")
 print(train_data.shape)
 print(train_labels.shape)

@@ -6,3 +6,7 @@ src/sssd/utils/__pycache__/
 src/ptb_xl/clinical_ts/__pycache__/
 src/sssd/sssd_label_cond/*
 src/sssd/wandb/*
+windows_plot/*
+signal_plot/*
+src/sssd/models/__pycache__/*
+src/ptb_xl/ecg_data_preprocessing copy.ipynb

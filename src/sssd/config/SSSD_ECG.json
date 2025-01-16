@@ -39,7 +39,8 @@
     },
     "gen_config":{
         "output_directory": "/home/shared/output_sssd-ecg",
-        "ckpt_path": "/home/shared/output_sssd-ecg"
+        "ckpt_path": "/home/shared/output_sssd-ecg",
+        "inference_split": "test"
     },
     "project_config": {
         "project_name": "SSSD-ECG",

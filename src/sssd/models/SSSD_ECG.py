@@ -168,15 +168,17 @@ class SSSD_ECG(nn.Module):
                  s4_bidirectional,
                  s4_layernorm,
                 label_embed_classes=0,
+                bmi_embed_classes=0,
                 label_embed_dim=128):
         super(SSSD_ECG, self).__init__()
 
         self.init_conv = nn.Sequential(Conv(in_channels, res_channels, kernel_size=1), nn.ReLU())
         
         # embedding for global conditioning
-        self.embedding = nn.Embedding(label_embed_classes, label_embed_dim) if label_embed_classes>0 is not None else None
+        self.embedding_disease = nn.Embedding(label_embed_classes, label_embed_dim) if label_embed_classes>0 is not None else None
         # extend label_embed_classes (age, gender, etc are encoded as one-hot)
-        # self.embedding_age nn.Embedding()
+        self.embedding_bmi = nn.Embedding(bmi_embed_classes, label_embed_dim) if bmi_embed_classes>0 is not None else None
+
         self.residual_layer = Residual_group(res_channels=res_channels, 
                                              skip_channels=skip_channels, 
                                              num_res_layers=num_res_layers, 
@@ -199,7 +201,13 @@ class SSSD_ECG(nn.Module):
         
         noise, label, diffusion_steps = input_data
 
-        label_embed = label @ self.embedding.weight if self.embedding is not None else None
+        label_disease = label[:,71]
+        label_bmi = label[71,78]
+
+        embedding_disease = self.embedding_disease(label_disease) if self.embedding_disease is not None else None
+        embedding_bmi = self.embedding_bmi(label_bmi) if self.embedding_bmi is not None else None
+
+        label_embed = torch.cat((embedding_disease, embedding_bmi), dim=1)
         
         x = noise
         x = self.init_conv(x)

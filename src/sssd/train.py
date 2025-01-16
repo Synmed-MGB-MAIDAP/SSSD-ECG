@@ -3,21 +3,12 @@ import argparse
 import json
 import numpy as np
 import torch
-import torch.nn as nn
-import warnings
 import wandb
-from pathlib import Path
 from models.SSSD_ECG import SSSD_ECG
-from utils.util import find_max_epoch, print_size, training_loss_label, calc_diffusion_hyperparams
-from utils.loss import mel_loss
+from utils.util import find_max_epoch, training_loss_label, calc_diffusion_hyperparams
+
 import wandb
 
-project_name = "MGB_MAIDAP_reproduce"
-experiment_name = "condition_v1"
-
-# wandb.init(project=project_name, name=experiment_name)
-# data_path = '/home/nutansahoo/MGB-MAIDAP/models/SSSD-ECG/Datasets'
-# label_path = '/home/nutansahoo/MGB-MAIDAP/models/SSSD-ECG/Datasets'
 def train(output_directory,
           ckpt_iter,
           n_iters,
@@ -25,7 +16,9 @@ def train(output_directory,
           iters_per_ckpt,
           iters_per_logging,
           learning_rate,
-         batch_size):
+         batch_size,
+         project_name,
+         experiment_name,):
   
     """
     Train Diffusion Models
@@ -40,6 +33,9 @@ def train(output_directory,
     iters_per_logging (int):        number of iterations to save training log and compute validation loss, default is 100
     learning_rate (float):          learning rate
     """
+
+    wandb.init(project=project_name, name=experiment_name)
+
     label_path = os.path.join(data_path, 'labels')
     data_path = os.path.join(data_path, 'data')
     
@@ -104,13 +100,13 @@ def train(output_directory,
     index_4 = torch.tensor([1,8,9,10])
     
     # Log hyperparameters (optional)
-    # wandb.config = {
-    #     "learning_rate": optimizer.param_groups[0]["lr"],
-    #     "batch_size": trainloader.batch_size if hasattr(trainloader, 'batch_size') else 'Unknown',
-    #     "n_iters": n_iters,
-    #     "iters_per_ckpt": iters_per_ckpt,
-    #     "iters_per_logging": iters_per_logging,
-    # }
+    wandb.config = {
+        "learning_rate": optimizer.param_groups[0]["lr"],
+        "batch_size": trainloader.batch_size if hasattr(trainloader, 'batch_size') else 'Unknown',
+        "n_iters": n_iters,
+        "iters_per_ckpt": iters_per_ckpt,
+        "iters_per_logging": iters_per_logging,
+    }
     # training
     n_iter = ckpt_iter + 1
     
@@ -120,17 +116,13 @@ def train(output_directory,
             
             audio = torch.index_select(audio, 1, index_8).float().cuda()
             label = label.float().cuda()
-
-            # print(audio.shape)
-            # print(label.shape)
-           
             
             # back-propagation
             optimizer.zero_grad()
             
             X = audio, label
             
-            loss = training_loss_label(net, nn.MSELoss(), X, diffusion_hyperparams)
+            loss = training_loss_label(net, "MSE", X, diffusion_hyperparams)
             # wandb.log({'training loss': loss.item()})
             loss.backward()
             optimizer.step()
@@ -157,7 +149,7 @@ def train(output_directory,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond.json',
+    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond_v2.json',
                         help='JSON file for configuration')
 
     args = parser.parse_args()
@@ -183,5 +175,8 @@ if __name__ == "__main__":
     global model_config
     model_config = config['wavenet_config']
 
-    train(**train_config)
+    global project_config
+    project_config = config['project_config']
+
+    train(**train_config, **project_config)
 

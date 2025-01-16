@@ -30,7 +30,8 @@ def generate(output_directory,
              num_samples,
              ckpt_path,
              data_path,
-             ckpt_iter):
+             ckpt_iter,
+             inference_split="test"):
     
     
     """
@@ -80,7 +81,7 @@ def generate(output_directory,
         raise Exception('No valid model found')
 
     label_path = os.path.join(data_path, 'labels')
-    labels = np.load(os.path.join(label_path, 'ptbxl_test_labels.npy'))
+    labels = np.load(os.path.join(label_path, f'ptbxl_{inference_split}_labels.npy'))
     
     # break down labels into chunks of 400
 
@@ -122,7 +123,7 @@ def generate(output_directory,
 
        
         outfile = f'{i}_samples.npy'
-        synth_data_path = os.path.join(ckpt_path, "synth_data")
+        synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data")
         if not os.path.exists(synth_data_path):
             os.makedirs(synth_data_path)
         new_out = os.path.join(synth_data_path, outfile)

@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import os
 
-threshold_version = "condition_bmi"
+threshold_version = "condition_all_separate"
 
 target_fs=100 # sampling rate (100 Hz or 500 Hz)
 data_folder_ptb_xl = Path("/home/shared/physionet.org/files/ptb-xl/1.0.3")
@@ -35,14 +35,23 @@ threshold_bmi = {
     "bmi": [18.5, 25, 30, 35, 40]
 }
 
-if threshold_version == "condition_v1":
+threshold_all = {
+    "age": [12, 17, 34, 54, 74],
+    "weight": [50, 70, 90, 110],
+    "height": [150, 159, 169, 179],
+    "bmi": [18.5, 25, 30, 35, 40]
+}
+
+if threshold_version == ["condition_v1", "condition_v1_interpolate"]:
     threshold_selected = thresholds_v1
-elif threshold_version == "condition_v2":
+elif threshold_version == ["condition_v2"]:
     threshold_selected = thresholds_v2
-elif threshold_version == "condition_v3":
+elif threshold_version in ["condition_v3"]:
     threshold_selected = thresholds_v3
-elif threshold_version == "condition_bmi":
+elif threshold_version in ["condition_bmi", "condition_bmi_interpolate"]:
     threshold_selected = threshold_bmi
+elif threshold_version in ["condition_all", "condition_all_separate"]:
+    threshold_selected = threshold_all
 
 # Prepare the dataset
 df_ptb_xl, lbl_itos_ptb_xl,  mean_ptb_xl, std_ptb_xl = prepare_data_ptb_xl(data_folder_ptb_xl, min_cnt=0, target_fs=target_fs, channels=12, channel_stoi=channel_stoi_default, target_folder=target_folder_ptb_xl, thresholds=threshold_selected)
@@ -97,11 +106,17 @@ all_meta_labels = ['patient_id', 'age', 'sex', 'height', 'weight', 'nurse', 'sit
        'label_diag_superclass_numeric', 'data', 'data_mean', 'data_std',
        'data_length']
 
-if "bmi" in threshold_selected:
-    ptb_xl_label_demographcis = ["label_all", "label_bmi"]
+columns_selected = threshold_selected.keys()
+print(columns_selected)
+label_selected = [f"label_{col}" for col in columns_selected]
+print("label_selected", label_selected)
+if threshold_version.endswith("separate"): 
+    ptb_xl_label = ["label_diag", "label_form", "label_rhythm"]
 else:
-    ptb_xl_label_demographcis = ["label_all", "label_age", "label_sex", "label_height", "label_weight"]
-# Label all has 71 classes, label age has 7 classes, label sex has 2 classes, label height has 5 classes, label weight has 5 classes
+    ptb_xl_label = ["label_all"]
+
+ptb_xl_label_demographcis = ptb_xl_label + label_selected
+# Label all has 71 classes, label age has 6 classes, label sex has 2 classes, label height has 4 classes, label weight has 4 classes, label bmi has 6 classes
 
 df_mapped["label"] = df_mapped.apply(
     lambda row: np.concatenate([
@@ -111,7 +126,6 @@ df_mapped["label"] = df_mapped.apply(
     axis=1
 )
 
-# print(df_mapped["label"])
 print(len(df_mapped["label"].iloc[0]))
 tfms_ptb_xl_cpc = ToTensor()
             
@@ -144,7 +158,14 @@ for i in range(len(ds_train)):
     train_data_npy.append(ds_train[i].data)
     train_label_npy.append(ds_train[i].label)
 train_data_npy = np.array(train_data_npy)
-trai_label_npy = np.array(train_label_npy)
+train_label_npy = np.array(train_label_npy)
+
+if threshold_version == "condition_all_separate":
+    index_to_remove = [9, 33, 36, 38]
+else:
+    index_to_remove = []
+# train_data_npy = np.delete(train_data_npy, index_to_remove, axis=1)
+train_label_npy = np.delete(train_label_npy, index_to_remove, axis=1)
 
 np.save(target_folder_ptb_xl/"data/ptbxl_train_data.npy", train_data_npy)
 np.save(target_folder_ptb_xl/"labels/ptbxl_train_labels.npy", train_label_npy)
@@ -157,6 +178,9 @@ for i in range(len(ds_val)):
 val_data_npy = np.array(val_data_npy)
 val_label_npy = np.array(val_label_npy)
 
+# val_data_npy = np.delete(val_data_npy, index_to_remove, axis=1)
+val_label_npy = np.delete(val_label_npy, index_to_remove, axis=1)
+
 np.save(target_folder_ptb_xl/"data/ptbxl_val_data.npy", val_data_npy)
 np.save(target_folder_ptb_xl/"labels/ptbxl_val_labels.npy", val_label_npy)
 
@@ -167,6 +191,9 @@ for i in range(len(ds_test)):
     test_label_npy.append(ds_test[i].label)
 test_data_npy = np.array(test_data_npy)
 test_label_npy = np.array(test_label_npy)
+
+# test_data_npy = np.delete(test_data_npy, index_to_remove, axis=1)
+test_label_npy = np.delete(test_label_npy, index_to_remove, axis=1)
 
 np.save(target_folder_ptb_xl/"data/ptbxl_test_data.npy", test_data_npy)
 np.save(target_folder_ptb_xl/"labels/ptbxl_test_labels.npy", test_label_npy)

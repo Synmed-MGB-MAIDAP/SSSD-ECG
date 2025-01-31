@@ -6,7 +6,7 @@ import torch
 import wandb
 from models.SSSD_ECG import SSSD_ECG
 from utils.util import find_max_epoch, training_loss_label, calc_diffusion_hyperparams
-
+from eval import evaluate_model
 import wandb
 
 def train(output_directory,
@@ -70,7 +70,7 @@ def train(output_directory,
         try:
             # load checkpoint file
             model_path = os.path.join(output_directory, '{}.pkl'.format(ckpt_iter))
-            checkpoint = torch.load(model_path, map_location='cpu')
+            checkpoint = torch.load(model_path, map_location="cuda" if torch.cuda.is_available() else "cpu")
 
             # feed model dict and optimizer state
             net.load_state_dict(checkpoint['model_state_dict'])
@@ -85,7 +85,8 @@ def train(output_directory,
         ckpt_iter = -1
         print('No valid checkpoint model found, start training from initialization.')
         
-        
+    
+    print("net device", next(net.parameters()).device)
     data_ptbxl = np.load(os.path.join(data_path, 'ptbxl_train_data.npy'))
     labels_ptbxl = np.load(os.path.join(label_path, 'ptbxl_train_labels.npy'))   
     
@@ -95,6 +96,16 @@ def train(output_directory,
     
         
     trainloader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=6, drop_last=True)
+
+    # Load validate data
+    val_data_ptbxl = np.load(os.path.join(data_path, 'ptbxl_val_data.npy'))
+    val_labels_ptbxl = np.load(os.path.join(label_path, 'ptbxl_val_labels.npy'))
+
+    val_data = []
+    for i in range(len(val_data_ptbxl)):
+        val_data.append([val_data_ptbxl[i], val_labels_ptbxl[i]])
+
+    valloader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=6, drop_last=False)
        
     index_8 = torch.tensor([0,2,3,4,5,6,7,11])
     index_4 = torch.tensor([1,8,9,10])
@@ -131,6 +142,10 @@ def train(output_directory,
                 print("iteration: {} \tloss: {}".format(n_iter, loss.item()))
                 wandb.log({"iteration": n_iter, "loss": loss.item()})
 
+                # --- EVALUATION STEP ---
+                val_loss = evaluate_model(net, valloader, index_8, diffusion_hyperparams)
+                print(f"[VAL] iteration: {n_iter} \tval_loss: {val_loss}")
+                wandb.log({"iteration": n_iter, "val_loss": val_loss})
 
             # save checkpoint
             if n_iter > 0 and n_iter % iters_per_ckpt == 0:
@@ -149,17 +164,15 @@ def train(output_directory,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond_bmi.json',
+    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond_multi_interpolate.json',
                         help='JSON file for configuration')
 
     args = parser.parse_args()
 
-    print(args.config)
     with open(args.config) as f:
         data = f.read()
 
     config = json.loads(data)
-    print(config)
     
     train_config = config["train_config"]  # training parameters
 

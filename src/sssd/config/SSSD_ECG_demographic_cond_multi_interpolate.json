@@ -18,12 +18,13 @@
         "s4_dropout":0.0,
         "s4_bidirectional":1,
         "s4_layernorm":1,
-        "label_embed_dim":128,
-        "label_embed_classes":90
+        "label_embed_dims":[32, 32, 32, 32, 32, 32, 32, 32],
+        "label_embed_classes":93,
+        "class_split":[[0,39], [40, 58], [59, 70], [71, 76], [77, 78], [79, 82], [83, 86], [87, 92]]
     },
     "train_config": {
-        "data_path": "/home/shared/ptbxl_data_sssd-ecg-dec",
-        "output_directory": "/home/shared/output_sssd-ecg-dec",
+        "data_path": "/home/shared/ptbxl_data_sssd-ecg/condition_all",
+        "output_directory": "/home/shared/output_sssd-ecg/condition_all",
         "ckpt_iter": "max",
         "iters_per_ckpt": 4000,
         "iters_per_logging": 100,
@@ -35,15 +36,15 @@
         "segment_length":1000,
         "sampling_rate": 100,
         "finetune_dataset":"ptbxl_all",
-        "data_path":"/home/shared/ptbxl_data_sssd-ecg/condition_v1"
+        "data_path":"/home/shared/ptbxl_data_sssd-ecg/condition_all"
     },
     "gen_config":{
-        "output_directory": "/home/shared/output_sssd-ecg-dec/condition_v1",
-        "ckpt_path": "/home/shared/output_sssd-ecg-dec/condition_v1",
+        "output_directory": "/home/shared/output_sssd-ecg/condition_all",
+        "ckpt_path": "/home/shared/output_sssd-ecg/condition_all",
         "inference_split": "train"
     },
     "project_config": {
         "project_name": "SSSD-ECG",
-        "experiment_name": "condition_concatenate"
+        "experiment_name": "condition_all_multi_proj"
     }
 }

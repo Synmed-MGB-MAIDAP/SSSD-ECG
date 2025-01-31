@@ -141,7 +141,7 @@ def generate(output_directory,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond.json',
+    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond_bmi.json',
                         help='JSON file for configuration')
     parser.add_argument('-ckpt_iter', '--ckpt_iter', default=100000,
                         help='Which checkpoint to use; assign a number or "max"')

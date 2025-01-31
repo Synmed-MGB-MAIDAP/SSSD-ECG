@@ -18,13 +18,13 @@
         "s4_dropout":0.0,
         "s4_bidirectional":1,
         "s4_layernorm":1,
-        "label_embed_dim":64,
+        "label_embed_dims":[32, 32, 32, 32, 32, 32, 32, 32],
         "label_embed_classes":71,
-        "bmi_embed_classes": 7
+        "class_split":[[0, 70]]
     },
     "train_config": {
-        "data_path": "/home/shared/ptbxl_data_sssd-ecg-dec/condition_bmi",
-        "output_directory": "/home/shared/output_sssd-ecg-dec/condition_bmi",
+        "data_path": "/home/shared/ptbxl_data_sssd-ecg/condition_v1_interpolate",
+        "output_directory": "/home/shared/output_sssd-ecg/condition_v1_interpolate_2",
         "ckpt_iter": "max",
         "iters_per_ckpt": 4000,
         "iters_per_logging": 100,
@@ -36,15 +36,15 @@
         "segment_length":1000,
         "sampling_rate": 100,
         "finetune_dataset":"ptbxl_all",
-        "data_path":"/home/shared/ptbxl_data_sssd-ecg"
+        "data_path":"/home/shared/ptbxl_data_sssd-ecg/condition_v1_interpolate"
     },
     "gen_config":{
-        "output_directory": "/home/shared/output_sssd-ecg/condition_bmi",
-        "ckpt_path": "/home/shared/output_sssd-ecg/condition_bmi",
-        "inference_split": "test"
+        "output_directory": "/home/shared/output_sssd-ecg/condition_v1_interpolate",
+        "ckpt_path": "/home/shared/output_sssd-ecg/condition_v1_interpolate",
+        "inference_split": "train"
     },
     "project_config": {
         "project_name": "SSSD-ECG",
-        "experiment_name": "condition_bmi"
+        "experiment_name": "condition_concatenate"
     }
 }

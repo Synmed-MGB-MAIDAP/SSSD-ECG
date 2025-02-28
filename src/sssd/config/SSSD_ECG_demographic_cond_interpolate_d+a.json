@@ -18,13 +18,13 @@
         "s4_dropout":0.0,
         "s4_bidirectional":1,
         "s4_layernorm":1,
-        "label_embed_dims":[32, 32, 32, 32, 32, 32, 32, 32],
+        "label_embed_dims":[32, 32, 32, 32],
         "label_embed_classes":93,
-        "class_split":[[0,39], [40, 58], [59, 70], [71, 76], [77, 78], [79, 82], [83, 86], [87, 92]]
+        "class_split":[[0,39], [40, 58], [59, 70], [71, 76]]
     },
     "train_config": {
-        "data_path": "/home/shared/ptbxl_data_sssd-ecg/condition_all_separate",
-        "output_directory": "/home/shared/output_sssd-ecg/condition_all",
+        "data_path": "/home/shared/ptbxl_data_sssd-ecg/condition_all",
+        "output_directory": "/home/shared/output_sssd-ecg/condition_all_d+a",
         "ckpt_iter": "max",
         "iters_per_ckpt": 4000,
         "iters_per_logging": 100,
@@ -39,12 +39,12 @@
         "data_path":"/home/shared/ptbxl_data_sssd-ecg/condition_all_separate"
     },
     "gen_config":{
-        "output_directory": "/home/shared/output_sssd-ecg/condition_all",
-        "ckpt_path": "/home/shared/output_sssd-ecg/condition_all",
+        "output_directory": "/home/shared/output_sssd-ecg/condition_all_d+a",
+        "ckpt_path": "/home/shared/output_sssd-ecg/condition_all_d+a",
         "inference_split": "test"
     },
     "project_config": {
         "project_name": "SSSD-ECG",
-        "experiment_name": "condition_all_multi_proj"
+        "experiment_name": "condition_all_multi_proj_d+a"
     }
 }

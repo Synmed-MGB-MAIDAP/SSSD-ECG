@@ -31,6 +31,7 @@ def generate(output_directory,
              ckpt_path,
              data_path,
              ckpt_iter,
+             experiment_name,
              inference_split="test"):
     
     
@@ -48,7 +49,7 @@ def generate(output_directory,
 
     # generate experiment (local) path
     # experiment_name = "raw"
-    local_path = "ch{}_T{}_betaT{}".format(model_config["res_channels"], 
+    local_path = "{}/ch{}_T{}_betaT{}".format(experiment_name, model_config["res_channels"], 
                                            diffusion_config["T"], 
                                            diffusion_config["beta_T"])
 
@@ -82,6 +83,9 @@ def generate(output_directory,
 
     label_path = os.path.join(data_path, 'labels')
     labels = np.load(os.path.join(label_path, f'ptbxl_{inference_split}_labels.npy'))
+    print("Loaded labels from ", os.path.join(label_path, f'ptbxl_{inference_split}_labels.npy'))
+    print("Number of labels: ", len(labels))
+    print("Each label shape: ", labels[0].shape)
     
     # break down labels into chunks of 400
 
@@ -97,6 +101,7 @@ def generate(output_directory,
     for i, label in enumerate(chunks):
         # if i!=len(chunks)-1:
         #     continue
+        print(len(chunks))
         cond = torch.from_numpy(label).cuda().float()
 
         # inference
@@ -141,7 +146,7 @@ def generate(output_directory,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond_bmi.json',
+    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond_interpolate_d+g.json',
                         help='JSON file for configuration')
     parser.add_argument('-ckpt_iter', '--ckpt_iter', default=100000,
                         help='Which checkpoint to use; assign a number or "max"')
@@ -170,9 +175,12 @@ if __name__ == "__main__":
         **diffusion_config)  # dictionary of all diffusion hyperparameters
 
     global model_config
+
     model_config = config['wavenet_config']
+    experiment_name = config['project_config']['experiment_name']
     
     generate(**gen_config,
                 ckpt_iter=args.ckpt_iter,
                 num_samples=args.num_samples,
+                experiment_name=experiment_name,
                 data_path=trainset_config["data_path"])

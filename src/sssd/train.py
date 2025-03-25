@@ -8,6 +8,8 @@ from models.SSSD_ECG import SSSD_ECG
 from utils.util import find_max_epoch, training_loss_label, calc_diffusion_hyperparams
 from eval import evaluate_model
 import wandb
+from utils.mimic_4_preprocess import MIMIC_IV_ECG_Dataset
+from utils.demographics_mapping import categorize_demographics
 
 def train(output_directory,
           ckpt_iter,
@@ -59,6 +61,9 @@ def train(output_directory,
             
     # predefine model
     net = SSSD_ECG(**model_config).cuda()
+    total_params = sum(p.numel() for p in net.parameters())
+    print(f"Total Parameters: {total_params:,}")
+
     
     # define optimizer
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
@@ -87,25 +92,35 @@ def train(output_directory,
         
     
     print("net device", next(net.parameters()).device)
-    data_ptbxl = np.load(os.path.join(data_path, 'ptbxl_train_data.npy'))
-    labels_ptbxl = np.load(os.path.join(label_path, 'ptbxl_train_labels.npy'))   
-    
-    train_data = []
-    for i in range(len(data_ptbxl)):
-        train_data.append([data_ptbxl[i], labels_ptbxl[i]])
-    
+    # ptbxl
+    if trainset_config["finetune_dataset"] == "ptbxl_all":
+        data_ptbxl = np.load(os.path.join(data_path, 'ptbxl_train_data.npy'))
+        labels_ptbxl = np.load(os.path.join(label_path, 'ptbxl_train_labels.npy'))   
         
-    trainloader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=6, drop_last=True)
+        train_data = []
+        for i in range(len(data_ptbxl)):
+            train_data.append([data_ptbxl[i], labels_ptbxl[i]])
+        
+        trainloader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=6, drop_last=True)
 
-    # Load validate data
-    val_data_ptbxl = np.load(os.path.join(data_path, 'ptbxl_val_data.npy'))
-    val_labels_ptbxl = np.load(os.path.join(label_path, 'ptbxl_val_labels.npy'))
+        # Load validate data
+        val_data_ptbxl = np.load(os.path.join(data_path, 'ptbxl_val_data.npy'))
+        val_labels_ptbxl = np.load(os.path.join(label_path, 'ptbxl_val_labels.npy'))
 
-    val_data = []
-    for i in range(len(val_data_ptbxl)):
-        val_data.append([val_data_ptbxl[i], val_labels_ptbxl[i]])
+        val_data = []
+        for i in range(len(val_data_ptbxl)):
+            val_data.append([val_data_ptbxl[i], val_labels_ptbxl[i]])
 
-    valloader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=6, drop_last=False)
+        valloader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=6, drop_last=False)
+    
+    elif trainset_config["finetune_dataset"] == "mimic_iv":
+        print("Loading MIMIC-IV dataset")
+        train_data = MIMIC_IV_ECG_Dataset(dataset_path=trainset_config['data_path'], usage='train', resample_length=1000)
+        val_data = MIMIC_IV_ECG_Dataset(dataset_path=trainset_config['data_path'], usage='val', resample_length=1000)
+        train_data = categorize_demographics(train_data)
+        val_data = categorize_demographics(val_data)
+        trainloader = torch.utils.data.DataLoader(train_data, batch_size=6, shuffle=True)
+        valloader = torch.utils.data.DataLoader(val_data, batch_size=6, shuffle=False)
        
     index_8 = torch.tensor([0,2,3,4,5,6,7,11])
     index_4 = torch.tensor([1,8,9,10])
@@ -127,6 +142,7 @@ def train(output_directory,
             
             audio = torch.index_select(audio, 1, index_8).float().cuda()
             label = label.float().cuda()
+            # print("print out shapes", audio.shape, label.shape)
             
             # back-propagation
             optimizer.zero_grad()
@@ -164,7 +180,7 @@ def train(output_directory,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond_interpolate_d+g.json',
+    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond_interpolate_15_onehot_mimic.json',
                         help='JSON file for configuration')
 
     args = parser.parse_args()

@@ -9,7 +9,7 @@ import numpy as np
 from scipy import signal
 import wfdb
 from wfdb import processing
-from utils.demographics_mapping import map_age, map_gender, map_heartrate, categorize_demographics
+from demographics_mapping import map_age, map_gender, map_heartrate, categorize_demographics
 
 
 def create_encoding_vector(input_list):
@@ -93,10 +93,10 @@ class MIMIC_IV_ECG_Dataset(Dataset):
     def __init__(self,
                  dataset_path: str, 
                  usage: str='all', 
-                 num_folds: int=10, 
+                 num_folds: int=20, 
                  test_fold: int=None, 
                  seed: int=42, 
-                 resample_length: int=1000,
+                 resample_length: int=1024,
                  max_samples: int = None):
 
         self.resample_length = resample_length
@@ -129,8 +129,11 @@ class MIMIC_IV_ECG_Dataset(Dataset):
 
         self.sheet = pd.merge(self.sheet, self.patient_table, how='inner', on=['subject_id', 'subject_id'])
 
+        print("number of folds", len(self.sheet))
+        print("number of folds", num_folds)
+        # 20, 18 train, 19 val, 20 test
         # split train and test data
-        if usage in ['train', 'test']:
+        if usage in ['train', 'val', 'test']:
             if seed is not None:
                 np.random.seed(seed)
             folds = np.random.randint(0, num_folds, size=len(self.sheet), dtype=np.int8)
@@ -138,8 +141,11 @@ class MIMIC_IV_ECG_Dataset(Dataset):
 
             if test_fold is None:
                 test_fold = num_folds - 1
+            val_fold = test_fold - 1
             if usage == 'train':
-                sheet_mask = self.sheet['fold'] != test_fold
+                sheet_mask = (self.sheet['fold'] != val_fold) & (self.sheet['fold'] != test_fold)
+            elif usage == 'val':
+                sheet_mask = self.sheet['fold'] == val_fold
             else:
                 sheet_mask = self.sheet['fold'] == test_fold
             self.sheet = self.sheet[sheet_mask]
@@ -152,6 +158,7 @@ class MIMIC_IV_ECG_Dataset(Dataset):
         # resample x to intended length
         if self.resample_length:
             # x: (L, C) -> (resample_length, C)
+            # print(f"Resampling from {x.shape[0]} to {self.resample_length}")
             x = signal.resample(x, self.resample_length)
 
         x = torch.as_tensor(x, dtype=torch.float)
@@ -227,7 +234,9 @@ class MIMIC_IV_ECG_Dataset(Dataset):
 if __name__ == '__main__':
     # Original dataset
     dataset_path = '/home/shared/mmic_iv_ecg/files/mimic-iv-ecg/1.0'
-    data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='test', resample_length=1000, max_samples=100)
+    data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='test', resample_length=1024, max_samples=100)
+    train_data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='train', resample_length=1024, max_samples=100)
+    val_data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='val', resample_length=1024, max_samples=100)
     new_data = categorize_demographics(data)
     print(new_data[0])
     dataloader = DataLoader(new_data, batch_size=2, shuffle=True)

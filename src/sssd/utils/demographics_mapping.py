@@ -2,7 +2,7 @@ import random
 import torch
 
 # common practive thresholds 91
-thresholds_v3 = {
+thresholds_15 = {
     "age": [12, 17, 34, 54, 74],
     "weight": [50, 70, 90, 110],
     "height": [150, 159, 169, 179],
@@ -14,7 +14,7 @@ def map_age(age):
     """
     Map age to an on hot vector based on the provided thresholds.
     """
-    age_threshold = thresholds_v3['age']
+    age_threshold = thresholds_15['age']
     # Create a one-hot vector
     one_hot_vector = [0] * (len(age_threshold) + 1)
     if not isinstance(age, int):
@@ -70,7 +70,7 @@ def map_heartrate(hr):
     """
     Map heart rate to an on hot vector based on the provided thresholds.
     """
-    hr_threshold = thresholds_v3['hr']
+    hr_threshold = thresholds_15['hr']
     # Create a one-hot vector
     one_hot_vector = [0] * (len(hr_threshold) + 1)
     

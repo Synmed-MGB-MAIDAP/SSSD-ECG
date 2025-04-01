@@ -115,13 +115,15 @@ def train(output_directory,
     
     elif trainset_config["finetune_dataset"] == "mimic_iv":
         print("Loading MIMIC-IV dataset")
-        train_data = MIMIC_IV_ECG_Dataset(dataset_path=trainset_config['data_path'], usage='train', resample_length=1000)
-        val_data = MIMIC_IV_ECG_Dataset(dataset_path=trainset_config['data_path'], usage='val', resample_length=1000)
+        train_data = MIMIC_IV_ECG_Dataset(dataset_path=trainset_config['data_path'], usage='train', resample_length=1024, max_samples=100)
+        val_data = MIMIC_IV_ECG_Dataset(dataset_path=trainset_config['data_path'], usage='val', resample_length=1024, max_samples=10)
+        print("Train data size: ", len(train_data))
+        print("Validation data size: ", len(val_data))
         train_data = categorize_demographics(train_data)
         val_data = categorize_demographics(val_data)
-        trainloader = torch.utils.data.DataLoader(train_data, batch_size=6, shuffle=True)
-        valloader = torch.utils.data.DataLoader(val_data, batch_size=6, shuffle=False)
-       
+        trainloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
+        valloader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False)
+    
     index_8 = torch.tensor([0,2,3,4,5,6,7,11])
     index_4 = torch.tensor([1,8,9,10])
     
@@ -180,7 +182,7 @@ def train(output_directory,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond_interpolate_15_onehot_mimic.json',
+    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond_interpolate_15_onehot_mimic_faster.json',
                         help='JSON file for configuration')
 
     args = parser.parse_args()

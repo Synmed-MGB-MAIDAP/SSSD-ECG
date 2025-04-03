@@ -180,7 +180,11 @@ class SSSD_ECG(nn.Module):
         
         self.embedding_layers = []
         for i, index in enumerate(self.class_split):
-            self.embedding_layers.append(nn.Embedding(index[1] - index[0] + 1, self.label_embed_dims[i]))
+            if index[0] <= index[1]:
+                label_classes = index[1] - index[0] + 1
+            else:
+                label_classes = index[0] - index[1] + 1
+            self.embedding_layers.append(nn.Embedding(label_classes, self.label_embed_dims[i]))
             
 
         # 128 is the default embedding dimension
@@ -212,7 +216,11 @@ class SSSD_ECG(nn.Module):
         embeddings = []
         
         for i, index in enumerate(self.class_split):
-            label_class = label[:,index[0]:index[1]+1]
+            if index[0] <= index[1]:
+                label_class = label[:,index[0]:index[1]+1]
+            else:
+                # print(f"label[:,{index[0]}:{index[1]}-1:-1]")
+                label_class = label[:,torch.tensor([index[0], index[1]])]
             embedding_layer = self.embedding_layers[i]
             label_class = label_class.to(device)
             embedding_layer = embedding_layer.to(device)

@@ -9,7 +9,7 @@ import numpy as np
 from scipy import signal
 import wfdb
 from wfdb import processing
-from demographics_mapping import map_age, map_gender, map_heartrate, categorize_demographics
+from utils.demographics_mapping import map_age, map_gender, map_heartrate, categorize_demographics
 
 
 def create_encoding_vector(input_list):

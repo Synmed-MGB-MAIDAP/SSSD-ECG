@@ -30,6 +30,7 @@ import datetime
 
 #from clinical_ts.misc_utils import *
 from .timeseries_utils import *
+from .label_utils import *
 
 # Cell
 channel_stoi_default = {"i": 0, "ii": 1, "v1":2, "v2":3, "v3":4, "v4":5, "v5":6, "v6":7, "iii":8, "avr":9, "avl":10, "avf":11, "vx":12, "vy":13, "vz":14}
@@ -701,6 +702,7 @@ def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, chann
         ptb_xl_csv = data_path/"ptbxl_database.csv"
         df_ptb_xl=pd.read_csv(ptb_xl_csv,index_col="ecg_id")
         print("df_ptb_xl columns", df_ptb_xl.columns)
+        print("df_ptb_xl sex", df_ptb_xl['sex'].value_counts())
         df_ptb_xl.scp_codes=df_ptb_xl.scp_codes.apply(lambda x: eval(x.replace("nan","np.nan")))
 
         # preparing labels
@@ -729,6 +731,7 @@ def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, chann
 
         columns = thresholds.keys() if thresholds is not None else None
         column_labels = [f"label_{column}" for column in columns] if columns is not None else None
+        column_labels += ["label_sex"]
 
         if thresholds is not None:
             age_threshold = thresholds["age"] if "age" in thresholds else None
@@ -743,6 +746,11 @@ def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, chann
         df_ptb_xl["label_sex"] = df_ptb_xl["sex"].apply(lambda x: [x])
         df_ptb_xl["label_weight"] = df_ptb_xl["weight"].apply(lambda x: [_weight_to_categorical_interpolate(x, weight_threshold)])
         df_ptb_xl["label_height"] = df_ptb_xl["height"].apply(lambda x: [_height_to_categorical_interpolate(x, height_threshold)])
+        # df_ptb_xl["label_hr"] = df_ptb_xl["heart_rate"].apply(lambda x: [_hr_to_categorical_interpolate(x)])
+        if thresholds and "15" in thresholds:
+            df_ptb_xl["label_15"] = df_ptb_xl["label_all"].apply(lambda x: one_hot_to_str(relabel_71_to_15(np.array([str_to_one_hot("-".join(x), new_label_order)]), labels_15, new_label_order), label_15).split("-"))
+            # df_ptb_xl["label_hr"] = df_ptb_xl["filename_hr"]
+            # print(df_ptb_xl["label_hr"].value_counts())
 
         df_ptb_xl["dataset"]="ptb_xl_demographics"
         #filter and map (can be reapplied at any time)
@@ -762,7 +770,7 @@ def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, chann
             np.save(target_root_ptb_xl/(filename.stem+".npy"),data)
             filenames.append(Path(filename.stem+".npy"))
             iter += 1
-            # if iter > 10:
+            # if iter > 1000:
             #     break
         df_ptb_xl = df_ptb_xl[:iter]
         df_ptb_xl["data"] = filenames
@@ -791,6 +799,8 @@ def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, chann
         save_dataset(df_ptb_xl,lbl_itos_ptb_xl,mean_ptb_xl,std_ptb_xl,target_root_ptb_xl)
     else:
         df_ptb_xl, lbl_itos_ptb_xl, mean_ptb_xl, std_ptb_xl = load_dataset(target_root_ptb_xl,df_mapped=False)
+
+    print("------------------", lbl_itos_ptb_xl)
     return df_ptb_xl, lbl_itos_ptb_xl, mean_ptb_xl, std_ptb_xl
 
 def map_and_filter_labels(df,min_cnt,lbl_cols):
@@ -808,11 +818,19 @@ def map_and_filter_labels(df,min_cnt,lbl_cols):
             lbl_stoi = {s:i for i,s in enumerate(lbl_itos_ptb_xl[selection+"_filtered"])}
             df_ptb_xl[selection+"_filtered_numeric"]=df_ptb_xl[selection+"_filtered"].apply(lambda x:[lbl_stoi[y] for y in x])
         #also lbl_itos and ..._numeric col for original label column
-        lbl_itos_ptb_xl[selection]= np.array(sorted(list(set([x for sublist in df_ptb_xl[selection] for x in sublist]))))
+        if selection in ['label_hr']:
+            continue
+        # print("selection", selection, "sublist", df_ptb_xl[selection])
+        if selection in ['label_15']:
+            # print("print out sorted 15", [""] + label_15)
+            lbl_itos_ptb_xl[selection] = np.array([""] + label_15)
+        else:
+            # print("print out sorted", sorted(list(set([x for sublist in df_ptb_xl[selection] for x in sublist]))))
+            lbl_itos_ptb_xl[selection]= np.array(sorted(list(set([x for sublist in df_ptb_xl[selection] for x in sublist]))))
+        print("print sorted", selection, lbl_itos_ptb_xl[selection])
         lbl_stoi = {s:i for i,s in enumerate(lbl_itos_ptb_xl[selection])}
         df_ptb_xl[selection+"_numeric"]=df_ptb_xl[selection].apply(lambda x:[lbl_stoi[y] for y in x])
     return df_ptb_xl, lbl_itos_ptb_xl
-
 
 # Cell
 def thew_to_np(filename_in, target_fs=100, channels=12, max_length_seconds=0, channel_stoi=None, fs=180, target_folder=None):

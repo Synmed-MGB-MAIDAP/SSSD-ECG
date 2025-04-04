@@ -24,13 +24,13 @@
     },
     "train_config": {
         "data_path": "/home/shared/ptbxl_data_sssd-ecg/condition_all",
-        "output_directory": "/home/shared/output_sssd-ecg/condition_mimic_15_bs_24",
+        "output_directory": "/home/shared/output_sssd-ecg/condition_mimic_15_bs_36",
         "ckpt_iter": "max",
         "iters_per_ckpt": 1000,
-        "iters_per_logging": 1000,
+        "iters_per_logging": 100000,
         "n_iters": 100000,
-        "learning_rate": 2e-4,
-        "batch_size":24
+        "learning_rate": 1e-3,
+        "batch_size":30
     },
     "trainset_config":{
         "segment_length":1000,
@@ -39,12 +39,12 @@
         "data_path":"/home/shared/mmic_iv_ecg/files/mimic-iv-ecg/1.0"
     },
     "gen_config":{
-        "output_directory": "/home/shared/output_sssd-ecg/condition_mimic_15_bs_24",
-        "ckpt_path": "/home/shared/output_sssd-ecg/condition_mimic_15_bs_24",
+        "output_directory": "/home/shared/output_sssd-ecg/condition_mimic_15_bs_36",
+        "ckpt_path": "/home/shared/output_sssd-ecg/condition_mimic_15_bs_36",
         "inference_split": "test"
     },
     "project_config": {
         "project_name": "MIMIC-IV-ECG",
-        "experiment_name": "condition_mimic_15_bs_24"
+        "experiment_name": "condition_mimic_15_bs_36"
     }
 }

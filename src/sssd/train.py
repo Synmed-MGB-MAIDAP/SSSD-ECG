@@ -10,6 +10,7 @@ from eval import evaluate_model
 import wandb
 from utils.mimic_4_preprocess import MIMIC_IV_ECG_Dataset
 from utils.demographics_mapping import categorize_demographics
+from transformers import get_cosine_schedule_with_warmup
 
 def train(output_directory,
           ckpt_iter,
@@ -68,6 +69,12 @@ def train(output_directory,
     # define optimizer
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
 
+    scheduler = get_cosine_schedule_with_warmup(
+        optimizer,
+        num_warmup_steps=int(n_iters/100),        # e.g., 1000 - 100000 iterations of warmup
+        num_training_steps=n_iters  # total training iterations
+    )
+
     # load checkpoint
     if ckpt_iter == 'max':
         ckpt_iter = find_max_epoch(output_directory)
@@ -115,8 +122,8 @@ def train(output_directory,
     
     elif trainset_config["finetune_dataset"] == "mimic_iv":
         print("Loading MIMIC-IV dataset")
-        train_data = MIMIC_IV_ECG_Dataset(dataset_path=trainset_config['data_path'], usage='train', resample_length=1024)
-        val_data = MIMIC_IV_ECG_Dataset(dataset_path=trainset_config['data_path'], usage='val', resample_length=1024)
+        train_data = MIMIC_IV_ECG_Dataset(dataset_path=trainset_config['data_path'], usage='train', resample_length=1024, max_samples=10000)
+        val_data = MIMIC_IV_ECG_Dataset(dataset_path=trainset_config['data_path'], usage='val', resample_length=1024, max_samples=10000)
         print("Train data size: ", len(train_data))
         print("Validation data size: ", len(val_data))
         train_data = categorize_demographics(train_data)
@@ -155,10 +162,14 @@ def train(output_directory,
             # wandb.log({'training loss': loss.item()})
             loss.backward()
             optimizer.step()
+            scheduler.step()
 
             if n_iter % iters_per_logging == 0:
                 print("iteration: {} \tloss: {}".format(n_iter, loss.item()))
                 wandb.log({"iteration": n_iter, "loss": loss.item()})
+
+                current_lr = scheduler.get_last_lr()[0]
+                wandb.log({"learning_rate": current_lr, "iteration": step})
 
                 # --- EVALUATION STEP ---
                 val_loss = evaluate_model(net, valloader, index_8, diffusion_hyperparams)

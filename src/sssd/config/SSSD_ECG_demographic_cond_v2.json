@@ -38,8 +38,8 @@
         "data_path":"/home/shared/ptbxl_data_sssd-ecg"
     },
     "gen_config":{
-        "output_directory": "/home/shared/output_sssd-ecg",
-        "ckpt_path": "/home/shared/output_sssd-ecg"
+        "output_directory": "/home/shared/backup/output_sssd-ecg",
+        "ckpt_path": "/home/shared/backup/output_sssd-ecg"
     },
     "project_config": {
         "project_name": "SSSD-ECG",

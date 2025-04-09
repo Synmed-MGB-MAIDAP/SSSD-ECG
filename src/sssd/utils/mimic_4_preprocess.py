@@ -115,16 +115,16 @@ class MIMIC_IV_ECG_Dataset(Dataset):
             self.sheet = self.sheet.sample(frac=1, random_state=seed).head(max_samples).reset_index(drop=True)
 
         # Data Cleaning, exclude mal-formed ecg
-        with open('/home/shared/bad_data_quality_mimic_4_ecg.txt', 'r') as input_file:
+        with open('/home/shared/backup/bad_data_quality_mimic_4_ecg.txt', 'r') as input_file:
             bad_quality_list = [x.strip() for x in input_file.readlines()]
 
-        with open('/home/shared/empty_signal_mimic_4.txt', 'r') as input_file:
+        with open('/home/shared/backup/empty_signal_mimic_4.txt', 'r') as input_file:
             empty_sig_list = [x.strip() for x in input_file.readlines()]
 
         self.sheet = self.sheet[~self.sheet['path'].isin(bad_quality_list)]
         self.sheet = self.sheet[~self.sheet['path'].isin(empty_sig_list)]
 
-        patient_table_path = '/home/shared/mimic-iv-2.2/hosp/patients.csv.gz'
+        patient_table_path = '/home/shared/backup/mimic-iv-2.2/hosp/patients.csv.gz'
         self.patient_table = pd.read_csv(patient_table_path, index_col='subject_id', low_memory=False)
 
         self.sheet = pd.merge(self.sheet, self.patient_table, how='inner', on=['subject_id', 'subject_id'])
@@ -233,7 +233,7 @@ class MIMIC_IV_ECG_Dataset(Dataset):
 
 if __name__ == '__main__':
     # Original dataset
-    dataset_path = '/home/shared/mmic_iv_ecg/files/mimic-iv-ecg/1.0'
+    dataset_path = '/home/shared/backup/mmic_iv_ecg/files/mimic-iv-ecg/1.0'
     data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='test', resample_length=1024, max_samples=100)
     train_data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='train', resample_length=1024, max_samples=100)
     val_data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='val', resample_length=1024, max_samples=100)

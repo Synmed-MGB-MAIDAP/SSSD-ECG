@@ -64,7 +64,6 @@ def train(output_directory,
     net = SSSD_ECG(**model_config).cuda()
     total_params = sum(p.numel() for p in net.parameters())
     print(f"Total Parameters: {total_params:,}")
-
     
     # define optimizer
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
@@ -122,7 +121,7 @@ def train(output_directory,
     
     elif trainset_config["finetune_dataset"] == "mimic_iv":
         print("Loading MIMIC-IV dataset")
-        train_data = MIMIC_IV_ECG_Dataset(dataset_path=trainset_config['data_path'], usage='train', resample_length=1024, max_samples=10000)
+        train_data = MIMIC_IV_ECG_Dataset(dataset_path=trainset_config['data_path'], usage='train', resample_length=1024)
         val_data = MIMIC_IV_ECG_Dataset(dataset_path=trainset_config['data_path'], usage='val', resample_length=1024, max_samples=10000)
         print("Train data size: ", len(train_data))
         print("Validation data size: ", len(val_data))
@@ -169,7 +168,7 @@ def train(output_directory,
                 wandb.log({"iteration": n_iter, "loss": loss.item()})
 
                 current_lr = scheduler.get_last_lr()[0]
-                wandb.log({"learning_rate": current_lr, "iteration": step})
+                wandb.log({"iteration": n_iter, "learning_rate": current_lr})
 
                 # --- EVALUATION STEP ---
                 val_loss = evaluate_model(net, valloader, index_8, diffusion_hyperparams)

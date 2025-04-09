@@ -23,28 +23,28 @@
         "class_split":[[72,86], [87, 92], [104, 103], [105, 110]]
     },
     "train_config": {
-        "data_path": "/home/shared/ptbxl_data_sssd-ecg/condition_15_demographic",
-        "output_directory": "/home/shared/output_sssd-ecg/condition_mimic_15_bs_24",
+        "data_path": "/home/shared/backup/ptbxl_data_sssd-ecg/condition_15_demographic",
+        "output_directory": "/home/zoeyhuang/output/output_sssd-ecg/condition_mimic_15_bs_30",
         "ckpt_iter": "max",
         "iters_per_ckpt": 1000,
         "iters_per_logging": 1000,
         "n_iters": 100000,
         "learning_rate": 2e-4,
-        "batch_size":24
+        "batch_size":30
     },
     "trainset_config":{
         "segment_length":1000,
         "sampling_rate": 100,
         "finetune_dataset":"mimic_iv",
-        "data_path":"/home/shared/ptbxl_data_sssd-ecg/condition_15_demographic"
+        "data_path":"/home/shared/backup/ptbxl_data_sssd-ecg/condition_15_demographic"
     },
     "gen_config":{
-        "output_directory": "/home/shared/output_sssd-ecg/condition_mimic_15_bs_24",
-        "ckpt_path": "/home/shared/output_sssd-ecg/condition_mimic_15_bs_24",
+        "output_directory": "/home/zoeyhuang/output/output_sssd-ecg/condition_mimic_15_bs_30",
+        "ckpt_path": "/home/zoeyhuang/output/output_sssd-ecg/condition_mimic_15_bs_30",
         "inference_split": "test"
     },
     "project_config": {
         "project_name": "MIMIC-IV-ECG",
-        "experiment_name": "condition_mimic_15_bs_24"
+        "experiment_name": "condition_mimic_15_bs_30"
     }
 }

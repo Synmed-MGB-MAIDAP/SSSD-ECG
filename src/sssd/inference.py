@@ -148,7 +148,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', type=str, default='/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD_ECG_demographic_cond_interpolate_15_onehot_mimic_faster_inf.json',
                         help='JSON file for configuration')
-    parser.add_argument('-ckpt_iter', '--ckpt_iter', default=16000,
+    parser.add_argument('-ckpt_iter', '--ckpt_iter', default=40000,
                         help='Which checkpoint to use; assign a number or "max"')
     parser.add_argument('-n', '--num_samples', type=int, default=400,
                         help='Number of utterances to be generated')

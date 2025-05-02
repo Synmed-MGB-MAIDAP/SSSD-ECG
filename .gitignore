@@ -40,3 +40,5 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+src/sssd/config/SSSD_ECG-ana.json
+MGB-MAIDAP/models/DiffuSETS_Exp/wandb

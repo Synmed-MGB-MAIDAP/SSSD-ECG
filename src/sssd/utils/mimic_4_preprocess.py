@@ -10,7 +10,7 @@ from scipy import signal
 import wfdb
 from wfdb import processing
 from utils.demographics_mapping import map_age, map_gender, map_heartrate, categorize_demographics
-
+import pickle
 
 def create_encoding_vector(input_list):
     # encoding order
@@ -110,9 +110,11 @@ class MIMIC_IV_ECG_Dataset(Dataset):
         self.mach_mea = pd.read_csv(os.path.join(self.dataset_path, 'machine_measurements.csv'), low_memory=False)
         self.sheet = pd.merge(self.record_list, self.mach_mea, how='inner', on=['subject_id', 'study_id'])
 
-        # Limit number of samples for quick testing
-        if max_samples is not None:
-            self.sheet = self.sheet.sample(frac=1, random_state=seed).head(max_samples).reset_index(drop=True)
+        # "home/claracao/exclude_list.pkl"
+        with open('/home/shared/diffusets_output/exclude_list.pkl', 'rb') as f:
+            exclude_list = pickle.load(f)
+
+        self.sheet.drop(exclude_list, inplace=True)
 
         # Data Cleaning, exclude mal-formed ecg
         with open('/home/shared/backup/bad_data_quality_mimic_4_ecg.txt', 'r') as input_file:
@@ -131,7 +133,7 @@ class MIMIC_IV_ECG_Dataset(Dataset):
 
         print("number of folds", len(self.sheet))
         print("number of folds", num_folds)
-        # 20, 18 train, 19 val, 20 test
+        # 0-17 train, 18 val, 19 test
         # split train and test data
         if usage in ['train', 'val', 'test']:
             if seed is not None:
@@ -149,6 +151,10 @@ class MIMIC_IV_ECG_Dataset(Dataset):
             else:
                 sheet_mask = self.sheet['fold'] == test_fold
             self.sheet = self.sheet[sheet_mask]
+
+            # Add sampling if max_samples is set
+            if max_samples is not None and len(self.sheet) > max_samples:
+                self.sheet = self.sheet.sample(n=max_samples, random_state=seed).reset_index(drop=True)
     
     # Preprocessing function for waveform data
     def _waveform_preprocess(self, x: np.ndarray):

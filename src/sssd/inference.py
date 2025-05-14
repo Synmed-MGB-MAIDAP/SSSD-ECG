@@ -75,6 +75,7 @@ def generate(output_directory,
         ckpt_iter = find_max_epoch(ckpt_path)
     model_path = os.path.join(ckpt_path, '{}.pkl'.format(ckpt_iter))
     try:
+        print('Loading model from %s' % model_path)
         checkpoint = torch.load(model_path, map_location='cpu')
         net.load_state_dict(checkpoint['model_state_dict'])
         print('Successfully loaded model at iteration {}'.format(ckpt_iter))
@@ -128,7 +129,8 @@ def generate(output_directory,
 
        
         outfile = f'{i}_samples.npy'
-        synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data")
+        synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_30000")
+        print("save data to synth_data_path", synth_data_path)
         if not os.path.exists(synth_data_path):
             os.makedirs(synth_data_path)
         new_out = os.path.join(synth_data_path, outfile)
@@ -148,7 +150,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', type=str, default='/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD_ECG_demographic_cond_interpolate_15_onehot_mimic_faster_inf.json',
                         help='JSON file for configuration')
-    parser.add_argument('-ckpt_iter', '--ckpt_iter', default=40000,
+    parser.add_argument('-ckpt_iter', '--ckpt_iter', default=100000,
                         help='Which checkpoint to use; assign a number or "max"')
     parser.add_argument('-n', '--num_samples', type=int, default=400,
                         help='Number of utterances to be generated')

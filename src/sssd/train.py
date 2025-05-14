@@ -5,12 +5,13 @@ import numpy as np
 import torch
 import wandb
 from models.SSSD_ECG import SSSD_ECG
-from utils.util import find_max_epoch, training_loss_label, calc_diffusion_hyperparams
+from utils.util import find_max_epoch, training_loss_label, calc_diffusion_hyperparams, sampling_label, plot_ecg_comparison
 from eval import evaluate_model
 import wandb
 from utils.mimic_4_preprocess import MIMIC_IV_ECG_Dataset
 from utils.demographics_mapping import categorize_demographics
 from transformers import get_cosine_schedule_with_warmup
+import random
 
 def train(output_directory,
           ckpt_iter,
@@ -68,11 +69,11 @@ def train(output_directory,
     # define optimizer
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
 
-    scheduler = get_cosine_schedule_with_warmup(
-        optimizer,
-        num_warmup_steps=int(n_iters/100),        # e.g., 1000 - 100000 iterations of warmup
-        num_training_steps=n_iters  # total training iterations
-    )
+    # scheduler = get_cosine_schedule_with_warmup(
+    #     optimizer,
+    #     num_warmup_steps=int(n_iters/100),        # e.g., 1000 - 100000 iterations of warmup
+    #     num_training_steps=n_iters  # total training iterations
+    # )
 
     # load checkpoint
     if ckpt_iter == 'max':
@@ -161,19 +162,47 @@ def train(output_directory,
             # wandb.log({'training loss': loss.item()})
             loss.backward()
             optimizer.step()
-            scheduler.step()
+            # scheduler.step()
 
             if n_iter % iters_per_logging == 0:
                 print("iteration: {} \tloss: {}".format(n_iter, loss.item()))
                 wandb.log({"iteration": n_iter, "loss": loss.item()})
 
-                current_lr = scheduler.get_last_lr()[0]
-                wandb.log({"iteration": n_iter, "learning_rate": current_lr})
+                # current_lr = scheduler.get_last_lr()[0]
+                # wandb.log({"learning_rate": current_lr, "iteration": n_iter})
 
                 # --- EVALUATION STEP ---
                 val_loss = evaluate_model(net, valloader, index_8, diffusion_hyperparams)
                 print(f"[VAL] iteration: {n_iter} \tval_loss: {val_loss}")
                 wandb.log({"iteration": n_iter, "val_loss": val_loss})
+
+                # --- ECG PLOTTING AND LOGGING ---
+                # Always use the same 10 fixed samples from valloader
+                val_batches = list(valloader)
+                num_samples = min(10, len(val_batches))
+                fixed_batches = val_batches[:num_samples]
+                ecg_figs = []
+                for i, (real_audio, real_label) in enumerate(fixed_batches):
+                    real_audio = torch.index_select(real_audio, 1, index_8).float().cuda()
+                    real_label = real_label.float().cuda()
+                    # Generate synthetic ECGs with the same label
+                    synth_audio = sampling_label(
+                        net,
+                        real_audio.shape,
+                        diffusion_hyperparams,
+                        cond=real_label
+                    ).detach().cpu().numpy()
+                    real_audio_np = real_audio.detach().cpu().numpy()
+                    # Plot comparison for the first sample in the batch
+                    fig = plot_ecg_comparison(
+                        real_audio_np[0],
+                        synth_audio[0],
+                        label=f"iter{n_iter}_sample{i}",
+                        return_fig=True
+                    )
+                    ecg_figs.append(wandb.Image(fig, caption=f"iter{n_iter}_sample{i}"))
+                # Log all images as a list
+                wandb.log({"ecg_comparisons": ecg_figs, "iteration": n_iter})
 
             # save checkpoint
             if n_iter > 0 and n_iter % iters_per_ckpt == 0:
@@ -192,7 +221,7 @@ def train(output_directory,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond_interpolate_15_onehot_mimic_faster.json',
+    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond_interpolate_15_onehot_mimic_hypertuned.json',
                         help='JSON file for configuration')
 
     args = parser.parse_args()
@@ -201,6 +230,8 @@ if __name__ == "__main__":
         data = f.read()
 
     config = json.loads(data)
+
+    print(config)
     
     train_config = config["train_config"]  # training parameters
 

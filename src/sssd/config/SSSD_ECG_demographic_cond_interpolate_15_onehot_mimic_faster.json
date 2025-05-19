@@ -23,8 +23,8 @@
         "class_split":[[0,14], [15, 20], [21, 22], [23, 28]]
     },
     "train_config": {
-        "data_path": "/home/shared/mmic_iv_ecg/files/mimic-iv-ecg/1.0",
-        "output_directory": "/home/shared/output_sssd-ecg/condition_mimic_15_bs_24",
+        "data_path": "/home/shared/backup/mmic_iv_ecg/files/mimic-iv-ecg/1.0",
+        "output_directory": "/home/zoeyhuang/output/output_sssd-ecg/condition_mimic_15_bs_30",
         "ckpt_iter": "max",
         "iters_per_ckpt": 5000,
         "iters_per_logging": 10000,
@@ -45,6 +45,6 @@
     },
     "project_config": {
         "project_name": "MIMIC-IV-ECG",
-        "experiment_name": "condition_mimic_15_bs_24"
+        "experiment_name": "condition_mimic_15_bs_30_last"
     }
 }

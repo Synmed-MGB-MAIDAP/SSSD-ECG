@@ -268,7 +268,7 @@ def generate(output_directory,
         
         # Save intermediate results
         outfile = f'{i}_samples.npy'
-        synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_30000")
+        synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_55000")
         if not os.path.exists(synth_data_path):
             os.makedirs(synth_data_path)
         new_out = os.path.join(synth_data_path, outfile)

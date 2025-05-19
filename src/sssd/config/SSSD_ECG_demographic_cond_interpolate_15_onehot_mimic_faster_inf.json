@@ -23,8 +23,8 @@
         "class_split":[[72,86], [87, 92], [104, 103], [105, 110]]
     },
     "train_config": {
-        "data_path": "/home/shared/backup/ptbxl_data_sssd-ecg/condition_15_demographic",
-        "output_directory": "/home/zoeyhuang/output/output_sssd-ecg/condition_mimic_15_bs_30",
+        "data_path": "/home/zoeyhuang/output/condition_15_demographic",
+        "output_directory": "/home/zoeyhuang/output/output_sssd-ecg/condition_mimic_15_bs_30_last",
         "ckpt_iter": "max",
         "iters_per_ckpt": 1000,
         "iters_per_logging": 1000,
@@ -36,7 +36,7 @@
         "segment_length":1000,
         "sampling_rate": 100,
         "finetune_dataset":"mimic_iv",
-        "data_path":"/home/shared/backup/ptbxl_data_sssd-ecg/condition_15_demographic"
+        "data_path":"/home/zoeyhuang/output/condition_15_demographic"
     },
     "gen_config":{
         "output_directory": "/home/zoeyhuang/output/output_sssd-ecg/condition_mimic_15_bs_30",
@@ -45,6 +45,6 @@
     },
     "project_config": {
         "project_name": "MIMIC-IV-ECG",
-        "experiment_name": "condition_mimic_15_bs_30"
+        "experiment_name": "condition_mimic_15_bs_30_last"
     }
 }

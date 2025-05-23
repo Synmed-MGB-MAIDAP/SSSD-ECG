@@ -171,7 +171,7 @@ def generate(output_directory,
             
         test_data = MIMIC_IV_ECG_Dataset(
             dataset_path=trainset_config['data_path'], 
-            usage='train', 
+            usage='test', 
             resample_length=1024,
             include_text_embeddings=include_text_embed
         )
@@ -276,7 +276,7 @@ def generate(output_directory,
         
         # Save intermediate results
         outfile = f'{i}_samples.npy'
-        synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_55000")
+        synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_{ckpt_iter}")
         if not os.path.exists(synth_data_path):
             os.makedirs(synth_data_path)
         new_out = os.path.join(synth_data_path, outfile)
@@ -291,7 +291,7 @@ def generate(output_directory,
     all_labels = np.concatenate(all_labels, axis=0)
     
     # Save complete results
-    synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_30000")
+    synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_{ckpt_iter}")
     np.save(os.path.join(synth_data_path, 'all_samples.npy'), all_generated)
     np.save(os.path.join(synth_data_path, 'all_labels.npy'), all_labels)
     

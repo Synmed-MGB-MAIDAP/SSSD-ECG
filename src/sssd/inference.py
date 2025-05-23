@@ -165,13 +165,21 @@ def generate(output_directory,
         
     elif trainset_config["finetune_dataset"] == "mimic_iv":
         print("Loading MIMIC-IV dataset")
+        
+        include_text_embed = trainset_config["include_text_embeddings"] == 1
+        print(f"[INFO] include_text_embeddings: {include_text_embed}")
             
         test_data = MIMIC_IV_ECG_Dataset(
             dataset_path=trainset_config['data_path'], 
             usage='train', 
             resample_length=1024,
+            include_text_embeddings=include_text_embed
         )
-        test_data = categorize_demographics(test_data)
+        if not include_text_embed:
+            test_data = categorize_demographics(test_data)
+        else:
+            # TODO: this should be handled better
+            print("[INFO] Text embeddings included, no demographics categorization.")
         
         # Convert to numpy arrays
         real_data = []

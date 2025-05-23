@@ -1,4 +1,6 @@
 import os
+import ast
+import pickle
 
 import torch
 from torch.utils.data import Dataset
@@ -90,46 +92,83 @@ def translate_text_to_label(text):
 
 
 class MIMIC_IV_ECG_Dataset(Dataset):
-    def __init__(self,
-                 dataset_path: str, 
-                 usage: str='all', 
-                 num_folds: int=20, 
-                 test_fold: int=None, 
-                 seed: int=42, 
-                 resample_length: int=1024,
-                 max_samples: int = None):
+
+    def __init__(
+        self,
+        dataset_path: str = "/home/kumargirish/data/mimic_files/1.0",
+        other_files_path: str = "/home/kumargirish/data/mimic_files/",
+        usage: str = "all",
+        num_folds: int = 20,
+        test_fold: int = None,
+        seed: int = 42,
+        resample_length: int = 1024,
+        include_text_embeddings=False,
+        text_embedding_paths=None,
+        max_samples: int = None,
+    ):
+
+        print("Creating MIMIC dataset.")
+
+        self.include_text_embeddings = include_text_embeddings
+        if include_text_embeddings:
+            if text_embedding_paths is None:
+                print("Using default embedding paths")
+                text_embedding_paths = [
+                    "/home/kumargirish/data/mimic_files/mimic_report_embeddings.csv",
+                    "/home/kumargirish/data/mimic_files/mimic_report_embeddings_II.csv",
+                ]
+
+            temp = []
+            for embd_path in text_embedding_paths:
+                temp.append(pd.read_csv(embd_path))
+            self.text_to_embed_mapping = pd.concat(temp, ignore_index=True)
+        else:
+            self.text_to_embed_mapping = None
+            
+        print(f"Text embedding mapping shape: {self.text_to_embed_mapping.shape}")
 
         self.resample_length = resample_length
         self.dataset_path = dataset_path
+        self.other_files_path = other_files_path
 
         # Use all data
-        self.record_list = pd.read_csv(os.path.join(self.dataset_path, 'record_list.csv'), low_memory=False)
+        self.record_list = pd.read_csv(
+            os.path.join(self.dataset_path, "record_list.csv"), low_memory=False
+        )
         # Only use data having note (FUTURE)
         # self.record_list = pd.read_csv(os.path.join(self.dataset_path, 'waveform_note_links.csv'), low_memory=False)
 
-        self.mach_mea = pd.read_csv(os.path.join(self.dataset_path, 'machine_measurements.csv'), low_memory=False)
-        self.sheet = pd.merge(self.record_list, self.mach_mea, how='inner', on=['subject_id', 'study_id'])
+        self.mach_mea = pd.read_csv(
+            os.path.join(self.dataset_path, "machine_measurements.csv"),
+            low_memory=False,
+        )
+        self.sheet = pd.merge(
+            self.record_list, self.mach_mea, how="inner", on=["subject_id", "study_id"]
+        )
 
-        # "home/claracao/exclude_list.pkl"
-        with open('/home/shared/diffusets_output/exclude_list.pkl', 'rb') as f:
+        with open(os.path.join(self.other_files_path, 'exclude_list.pkl'), 'rb') as f:
             exclude_list = pickle.load(f)
 
         self.sheet.drop(exclude_list, inplace=True)
 
         # Data Cleaning, exclude mal-formed ecg
-        with open('/home/shared/backup/bad_data_quality_mimic_4_ecg.txt', 'r') as input_file:
+        with open(os.path.join(self.other_files_path, "bad_data_quality_mimic_4_ecg.txt"), "r") as input_file:
             bad_quality_list = [x.strip() for x in input_file.readlines()]
 
-        with open('/home/shared/backup/empty_signal_mimic_4.txt', 'r') as input_file:
+        with open(os.path.join(self.other_files_path, "empty_signal_mimic_4.txt"), "r") as input_file:
             empty_sig_list = [x.strip() for x in input_file.readlines()]
 
-        self.sheet = self.sheet[~self.sheet['path'].isin(bad_quality_list)]
-        self.sheet = self.sheet[~self.sheet['path'].isin(empty_sig_list)]
+        self.sheet = self.sheet[~self.sheet["path"].isin(bad_quality_list)]
+        self.sheet = self.sheet[~self.sheet["path"].isin(empty_sig_list)]
 
-        patient_table_path = '/home/shared/backup/mimic-iv-2.2/hosp/patients.csv.gz'
-        self.patient_table = pd.read_csv(patient_table_path, index_col='subject_id', low_memory=False)
+        patient_table_path = os.path.join(self.other_files_path, "patients.csv.gz")
+        self.patient_table = pd.read_csv(
+            patient_table_path, index_col="subject_id", low_memory=False
+        )
 
-        self.sheet = pd.merge(self.sheet, self.patient_table, how='inner', on=['subject_id', 'subject_id'])
+        self.sheet = pd.merge(
+            self.sheet, self.patient_table, how="inner", on=["subject_id", "subject_id"]
+        )
 
         print("number of folds", len(self.sheet))
         print("number of folds", num_folds)
@@ -169,7 +208,45 @@ class MIMIC_IV_ECG_Dataset(Dataset):
 
         x = torch.as_tensor(x, dtype=torch.float)
         return x
-    
+
+    num = ["1st", "2nd", "3rd"]
+
+    def _prompt_propcess(self, text):
+        prompt_text = ""
+        c = 0
+        s = ""
+        for ch in text:
+            if ch == "|":
+                # prompt_text += 'The ' + (num[c] if c <= 2 else str(c) + 'th') + ' diagnosis is {' + s + '}. '
+                if c == 0:
+                    prompt_text += "Most importantly, the 1st diagnosis is {" + s + "}."
+                else:
+                    prompt_text += (
+                        "As a supplementary condition, the "
+                        + (self.num[c] if c <= 2 else str(c + 1) + "th")
+                        + " diagnosis is {"
+                        + s
+                        + "}."
+                    )
+                c += 1
+                s = ""
+            else:
+                s += ch
+        if s != "":
+            if c == 0:
+                prompt_text += "Most importantly, the 1st diagnosis is {" + s + "}."
+            else:
+                prompt_text += (
+                    "As a supplementary condition, the "
+                    + (self.num[c] if c <= 2 else str(c + 1) + "th")
+                    + " diagnosis is {"
+                    + s
+                    + "}."
+                )
+            c += 1
+            s = ""
+        return prompt_text
+
     # Preprocessing function for text label
     def _text_preprocess(self, texts: list):
         # texts: list of 18 reports, where blank is parsed as np.NaN
@@ -180,21 +257,25 @@ class MIMIC_IV_ECG_Dataset(Dataset):
             if isinstance(x, str):
                 text_clean.append(x)
 
-        # TODO: add text embedding phase
-        # a simple concat way 
-        text_clean = '|'.join(text_clean)
+        text_clean = "|".join(text_clean)
 
-        return text_clean
+        text_to_embed = self._prompt_propcess(text_clean)
+        embedding = self.text_to_embed_mapping.loc[
+            self.text_to_embed_mapping["text"] == text_to_embed, "embedding"
+        ].values[0]
+        embedding = ast.literal_eval(embedding)
+        
+        return text_clean, embedding
 
     def __getitem__(self, idx: int):
-        item_path = os.path.join(self.dataset_path, self.sheet['path'].iloc[idx])
+        item_path = os.path.join(self.dataset_path, self.sheet["path"].iloc[idx])
 
         sig, fields = wfdb.rdsamp(item_path)
         x = self._waveform_preprocess(sig)
         new_freq = fields["fs"] * self.resample_length / 5000.0
 
-        texts = [self.sheet.iloc[idx][f'report_{x}'] for x in range(18)]
-        text = self._text_preprocess(texts)
+        texts = [self.sheet.iloc[idx][f"report_{x}"] for x in range(18)]
+        text, embedding = self._text_preprocess(texts)
         label = translate_text_to_label(text)
         encoded_label = create_encoding_vector(label)
 
@@ -221,17 +302,21 @@ class MIMIC_IV_ECG_Dataset(Dataset):
             heart_rate = 60.0 / rr_interval
 
         label_dict = {
-                'text': text, 
-                'label':label,
-                'encoded_label': encoded_label,
-                'subject_id': self.sheet.iloc[idx]['subject_id'], 
-                'hr': heart_rate, 
-                'age': self.sheet.iloc[idx]['anchor_age'],
-                'gender': self.sheet.iloc[idx]['gender']
-                # 'note_id': self.sheet.iloc[idx]['note_id'], 
-                }
-        # x: (L, C)
-        return x, label_dict
+            "text": text,
+            "label": label,
+            "encoded_label": encoded_label,
+            "subject_id": self.sheet.iloc[idx]["subject_id"],
+            "hr": heart_rate,
+            "age": self.sheet.iloc[idx]["anchor_age"],
+            "gender": self.sheet.iloc[idx]["gender"],
+            # 'note_id': self.sheet.iloc[idx]['note_id'],
+        }
+        
+        if self.include_text_embeddings:
+            final_label = torch.cat((encoded_label, torch.tensor(embedding)), 0)
+            return x.transpose(0, 1), final_label
+        else:
+            return x, label_dict
 
     def __len__(self) -> int:
         return len(self.sheet)
@@ -239,12 +324,19 @@ class MIMIC_IV_ECG_Dataset(Dataset):
 
 if __name__ == '__main__':
     # Original dataset
-    dataset_path = '/home/shared/backup/mmic_iv_ecg/files/mimic-iv-ecg/1.0'
-    data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='test', resample_length=1024, max_samples=100)
-    train_data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='train', resample_length=1024, max_samples=100)
-    val_data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='val', resample_length=1024, max_samples=100)
-    new_data = categorize_demographics(data)
+
+    data = MIMIC_IV_ECG_Dataset(resample_length=1000, include_text_embeddings=True)
+
+    # train_data = MIMIC_IV_ECG_Dataset(usage='train', resample_length=1024, max_samples=100)
+    # val_data = MIMIC_IV_ECG_Dataset(usage='val', resample_length=1024, max_samples=100)
+    
+    new_data = categorize_demographics(
+        data,
+        include_demographics=False,
+        include_text_embedding=True,
+        )
     print(new_data[0])
+    
     dataloader = DataLoader(new_data, batch_size=2, shuffle=True)
     print(len(dataloader))
 

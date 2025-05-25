@@ -13,8 +13,6 @@ import sys
 sys.path.append('/home/kumargirish/repos/MGB-MAIDAP/evals/sssd_eval')
 from metrics.metrics import RMSE, CorrelationCoefficient, MSE, SNR
 
-real_data_path = "/home/shared/ptbxl_data_sssd-ecg" # replace with your real data path
-synthetic_data_path = "/home/shared/output_sssd-ecg/raw/ch256_T200_betaT0.02/synth_test_data" # replace with your synthetic data path
 model_name = "raw" #  model name
 
 def load_npy_data(data_dir):
@@ -62,11 +60,6 @@ def main_eval(real_data, data, labels):
     return results
 
 if __name__ == "__main__":
-    # Load real data
-    # X_test_real, Y_test_real = load_npy_data(real_data_path)
-    # X_test_real, Y_test_real = load_mimic_data(include_text_embed=True)
-    
-    # X_test, Y_test = load_data_chunks(synthetic_data_path)
     
     dir_path = "/home/kumargirish/output_sssd-ecg/mimic_cn/mimic_cn/ch256_T200_betaT0.02/synth_test_data_127000"
     dir_path = "/home/kumargirish/output_sssd-ecg/mimic_cn/mimic_cn/ch256_T200_betaT0.02/synth_ptbxl_all_test_data_145000"
@@ -81,20 +74,20 @@ if __name__ == "__main__":
     print("real data shape: ", X_test_real.shape, Y_test_real.shape)  
     print("synthetic data shape: ", X_test.shape, Y_test.shape)
     
-    # --- change this if needed ---
-    # --- ------------------------------
-    num_samples = 400
-    # --- ------------------------------
-    # --- ------------------------------
+    # # --- change this if needed ---
+    # # --- ------------------------------
+    # num_samples = 400
+    # # --- ------------------------------
+    # # --- ------------------------------
     
-    if num_samples!=400:
-        print(f"sampling real data to {num_samples} samples per chunk")
-        X_test_real_sampled = []
-        for i in range(0, len(X_test_real), 400):
-            X_test_real_sampled.append(X_test_real[i:i+num_samples])
-        X_test_real_sampled = np.concatenate(X_test_real_sampled)
-        X_test_real= X_test_real_sampled
-        print("modified real data shape: ", X_test_real.shape, Y_test_real.shape)
+    # if num_samples!=400:
+    #     print(f"sampling real data to {num_samples} samples per chunk")
+    #     X_test_real_sampled = []
+    #     for i in range(0, len(X_test_real), 400):
+    #         X_test_real_sampled.append(X_test_real[i:i+num_samples])
+    #     X_test_real_sampled = np.concatenate(X_test_real_sampled)
+    #     X_test_real= X_test_real_sampled
+    #     print("modified real data shape: ", X_test_real.shape, Y_test_real.shape)
 
     #sanity check
     assert np.all(Y_test == Y_test_real) == True

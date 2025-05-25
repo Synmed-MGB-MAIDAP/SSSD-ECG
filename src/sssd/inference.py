@@ -13,7 +13,7 @@ from utils.demographics_mapping import categorize_demographics
 import matplotlib.pyplot as plt
 import wandb
 import pdb
-
+from warnings import warn
 
 def generate_four_leads(tensor):
     leadI = tensor[:,0,:].unsqueeze(1)
@@ -29,19 +29,17 @@ def generate_four_leads(tensor):
     return leads12
 
 
-def plot_signal_pairs(real_signals, generated_signals, save_dir, chunk_idx, num_samples=5):
+def plot_signal_pairs(real_signals, generated_signals, save_dir, chunk_idx, num_signal_pair_plots=5):
     """
     Plot pairs of real and generated signals for quality control
     """
     os.makedirs(save_dir, exist_ok=True)
 
-    print(len(real_signals), len(generated_signals), num_samples)
+    print(len(real_signals), len(generated_signals), num_signal_pair_plots)
     
     # Randomly select samples if we have more than num_samples
-    if len(real_signals) > num_samples:
-        indices = np.random.choice(len(real_signals), num_samples, replace=False)
-        # indicies equal to num_samples
-        indices = np.arange(num_samples)
+    if len(real_signals) > num_signal_pair_plots:
+        indices = np.random.choice(len(real_signals), num_signal_pair_plots, replace=False)
     else:
         indices = range(len(real_signals))
     
@@ -96,6 +94,8 @@ def generate(output_directory,
     data_path (str):                  path to dataset, numpy array.
     """
     print("num_samples: ", num_samples)
+    if num_samples!=400:
+        warn(f"num_samples={num_samples} is not 400, generating less data")
 
     # Initialize wandb for visualization
     wandb.init(project="sssd-ecg-inference", name=f"{experiment_name}_inference_{ckpt_iter}")
@@ -208,10 +208,19 @@ def generate(output_directory,
     
     all_generated = []
     all_labels = []
+    all_real_audio_used = []
     
     # Create directory for intermediate plots
     plot_dir = os.path.join(ckpt_path, f"synth_{inference_split}_plots")
     os.makedirs(plot_dir, exist_ok=True)
+    
+    # Synth data path
+    synth_data_path = os.path.join(
+        ckpt_path,
+        f"synth_{trainset_config['finetune_dataset']}_{inference_split}_data_{ckpt_iter}"
+    )
+    os.makedirs(synth_data_path, exist_ok=True)
+    print("Using synth data path: ", synth_data_path)
     
     for i, label in enumerate(chunks):
         print(f"Processing chunk {i+1}/{len(chunks)}")
@@ -222,8 +231,10 @@ def generate(output_directory,
         end = torch.cuda.Event(enable_timing=True)
         start.record()
 
-        cond = cond[:num_samples, :]
-        real_audio = real_data[i*num_samples:(i+1)*num_samples, :]
+        m_limit = min(num_samples, len(cond))
+        cond = cond[:m_limit, :]
+        real_audio = real_data[i*num_samples:i*num_samples+m_limit, :]
+        all_real_audio_used.append(real_audio)
         real_audio = torch.index_select(torch.from_numpy(real_audio), 1, index_8).float().cuda()
         
         print(f"Generating {num_samples} samples for chunk {i}")
@@ -247,11 +258,11 @@ def generate(output_directory,
         
         # Plot intermediate results
         plot_signal_pairs(
-            chunk_real_data,
+            all_real_audio_used[-1],
             generated_audio12.detach().cpu().numpy(),
             plot_dir,
             i,
-            num_samples=num_samples  # Plot 5 random samples per chunk
+            num_signal_pair_plots=5  # Plot 5 random samples per chunk
         )
         
         # Log some samples to wandb
@@ -276,7 +287,6 @@ def generate(output_directory,
         
         # Save intermediate results
         outfile = f'{i}_samples.npy'
-        synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_{ckpt_iter}")
         if not os.path.exists(synth_data_path):
             os.makedirs(synth_data_path)
         new_out = os.path.join(synth_data_path, outfile)
@@ -291,12 +301,11 @@ def generate(output_directory,
     all_labels = np.concatenate(all_labels, axis=0)
     
     # Save complete results
-    synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_{ckpt_iter}")
     np.save(os.path.join(synth_data_path, 'all_samples.npy'), all_generated)
     np.save(os.path.join(synth_data_path, 'all_labels.npy'), all_labels)
     
     # Save real data for comparison
-    np.save(os.path.join(synth_data_path, 'real_data.npy'), real_data)
+    np.save(os.path.join(synth_data_path, 'real_data_used.npy'), all_real_audio_used)
     
     # Plot final comparison of random samples
     final_plot_dir = os.path.join(plot_dir, 'final_comparison')
@@ -306,7 +315,7 @@ def generate(output_directory,
         all_generated,
         final_plot_dir,
         'final',
-        num_samples=num_samples  # Plot 10 random samples from the complete dataset
+        num_signal_pair_plots=10  # Plot 10 random samples from the complete dataset
     )
     
     tok = time.time()
@@ -324,7 +333,7 @@ if __name__ == "__main__":
                         help='JSON file for configuration')
     parser.add_argument('-ckpt_iter', '--ckpt_iter', default=100000,
                         help='Which checkpoint to use; assign a number or "max"')
-    parser.add_argument('-n', '--num_samples', type=int, default=4,
+    parser.add_argument('-n', '--num_samples', type=int, default=400,
                         help='Number of utterances to be generated')
     args = parser.parse_args()
 

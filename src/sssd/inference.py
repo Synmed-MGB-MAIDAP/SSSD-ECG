@@ -46,10 +46,7 @@ def generate_four_leads(tensor):
 
 
 def generate(output_directory,
-             num_samples,
-             ckpt_path,
              data_path,
-             ckpt_iter,
              classification_model_ckpt):
     
     
@@ -99,7 +96,7 @@ def generate(output_directory,
     try:
         checkpoint = torch.load(model_path, map_location='cpu')
         net.load_state_dict(checkpoint['model_state_dict'])
-        print('Successfully loaded model at iteration {}'.format(ckpt_iter))
+        print('Successfully loaded model at iteration {}'.format(1))
     except:
         raise Exception('No valid model found')
 
@@ -159,8 +156,8 @@ def generate(output_directory,
             end = torch.cuda.Event(enable_timing=True)
             start.record()
 
-            if num_samples != len(cond):
-                num_samples = len(cond)
+            # if num_samples != len(cond):
+            num_samples = len(cond)
             
             print("Generating {} samples for chunk {}".format(num_samples, i))
 
@@ -173,7 +170,7 @@ def generate(output_directory,
             end.record()
             torch.cuda.synchronize()
             print('generated {} utterances of random_digit at iteration {} in {} seconds'.format(num_samples,
-                                                                                ckpt_iter, 
+                                                                                1, 
                                                                                 int(start.elapsed_time(end)/1000)))
 
         
@@ -255,12 +252,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_inference.json',
                         help='JSON file for configuration')
-    parser.add_argument('-ckpt_iter', '--ckpt_iter', default=100000,
-                        help='Which checkpoint to use; assign a number or "max"')
-    parser.add_argument('-n', '--num_samples', type=int, default=400,
-                        help='Number of utterances to be generated')
-    parser.add_argument('-d', '--data_path', type=str, default='/home/shared/output_sssd-ecg_pseudolabel/', 
-                        help='Path to the labels for generation and for saving the generated ECGs')
+    # parser.add_argument('-ckpt_iter', '--ckpt_iter', default=100000,
+    #                     help='Which checkpoint to use; assign a number or "max"')
+    # parser.add_argument('-n', '--num_samples', type=int, default=400,
+    #                     help='Number of utterances to be generated')
+    # parser.add_argument('-d', '--data_path', type=str, default='/home/shared/output_sssd-ecg_pseudolabel/', 
+    #                     help='Path to the labels for generation and for saving the generated ECGs')
     args = parser.parse_args()
 
     # Parse configs. Globals nicer in this case
@@ -287,7 +284,6 @@ if __name__ == "__main__":
     model_config = config['wavenet_config']
     
     generate(**gen_config,
-                ckpt_iter=args.ckpt_iter,
-                num_samples=args.num_samples,
-                data_path=args.data_path, 
-                classification_model_ckpt=None)
+             data_path="/home/shared/output_sssd-ecg_pseudolabel/",
+            classification_model_ckpt="/home/nutansahoo/synthwave/checkpoints/PseudoLabel/checkpoint_best.pt")
+# python inference.py -c /home/nutansahoo/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD_ECG_inference.json

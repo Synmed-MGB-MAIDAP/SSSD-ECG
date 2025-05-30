@@ -16,6 +16,7 @@ from synthwave.message.supervised_message import SupervisedMessage
 from synthwave.dataset.ptb_xl.ptb_xl_dataset import PtbXlDataset
 
 dataset = PtbXlDataset(path="/home/shared/physionet.org/files/ptb-xl/1.0.3")
+diag_superclass_mapping = dataset._diag_superclass_mapping
 
 index_to_scpcode = ['1AVB', '2AVB', '3AVB', 'ABQRS', 'AFIB', 'AFLT', 'ALMI', 'AMI',
        'ANEUR', 'ASMI', 'BIGU', 'CLBBB', 'CRBBB', 'DIG', 'EL', 'HVOLT',
@@ -111,7 +112,7 @@ def generate(output_directory,
         result = pickle.load(f) 
     
     superclass_model_checkpoint =  torch.load(classification_model_ckpt, map_location='cpu')
-    batch_size = 256
+    # batch_size = 256
     num_channels = 12
     projection_size = 5
     encoder = resnet18_1d(
@@ -138,81 +139,113 @@ def generate(output_directory,
         random_sample = np.array([arrays[i] for i in indices])
 
     
-
-    
-    # break down labels into chunks of 400
-    diag_superclass_mapping = dataset._diag_superclass_mapping
-    chunks = []
-    for i in range(0, len(random_sample), 400):
-        if i + 400 <= len(random_sample):
-            chunks.append(random_sample[i:i+400])
-        else:
-            chunks.append(random_sample[i:])
-    
-    print("Starting generation")
-    tik = time.time()
-    for i, label in enumerate(chunks):
-        # if i!=len(chunks)-1:
-        #     continue
-        cond = torch.from_numpy(label).cuda().float()
-
-        # inference
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        start.record()
-
-        if num_samples != len(cond):
-            num_samples = len(cond)
+        # break down labels into chunks of 400
+        chunks = []
+        for i in range(0, len(random_sample), 400):
+            if i + 400 <= len(random_sample):
+                chunks.append(random_sample[i:i+400])
+            else:
+                chunks.append(random_sample[i:])
         
-        print("Generating {} samples for chunk {}".format(num_samples, i))
+        print("Starting generation")
+        tik = time.time()
+        for i, label in enumerate(chunks):
+            # if i!=len(chunks)-1:
+            #     continue
+            cond = torch.from_numpy(label).cuda().float()
 
-        generated_audio = sampling_label(net, (num_samples,8,1000), 
-                               diffusion_hyperparams,
-                               cond=cond)
-        
-        generated_audio12 = generate_four_leads(generated_audio)
+            # inference
+            start = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+            start.record()
 
-        end.record()
-        torch.cuda.synchronize()
-        print('generated {} utterances of random_digit at iteration {} in {} seconds'.format(num_samples,
-                                                                               ckpt_iter, 
-                                                                               int(start.elapsed_time(end)/1000)))
+            if num_samples != len(cond):
+                num_samples = len(cond)
+            
+            print("Generating {} samples for chunk {}".format(num_samples, i))
 
-       
-        # use the above generated audio to classify the ECGs into different superclasses
-        # create batch
-        batch = (generated_audio12, cond)
-        output = superclass_model(batch)
-        
-        # map predictions to labels
-        predictions = output.outputs.cpu()
-        print ("Shape of predictions", np.array(predictions).shape)
-        # map these predictions to superclass labels
+            generated_audio = sampling_label(net, (num_samples,8,1000), 
+                                diffusion_hyperparams,
+                                cond=cond)
+            
+            generated_audio12 = generate_four_leads(generated_audio)
 
+            end.record()
+            torch.cuda.synchronize()
+            print('generated {} utterances of random_digit at iteration {} in {} seconds'.format(num_samples,
+                                                                                ckpt_iter, 
+                                                                                int(start.elapsed_time(end)/1000)))
 
         
+            # use the above generated audio to classify the ECGs into different superclasses
+            # create batch
+            batch = (generated_audio12, cond)
+            output = superclass_model(batch)
+            
+            # map predictions to labels
+            predictions = output.outputs.cpu()
+            print ("Shape of predictions", np.array(predictions).shape)
+            # map these predictions to superclass labels
+            diag_superclass_mapping = dataset._diag_superclass_mapping
+            scpcodes_list = [
+                [index_to_scpcode[i] for i, v in enumerate(row) if v == 1]
+                for row in predictions
+                            ]
+            superclasses_list = [
+                                    "|".join([diag_superclass_mapping[code] for code in scpcodes if code in diag_superclass_mapping])
+                                    for scpcodes in scpcodes_list
+                                ]
+            
+            # save the generated audio and actual and predicted labels:
+            output_path_pseudolabel = "/home/shared/output_sssd-ecg_pseudolabel"
+            # iterate over each element and save the generated audio and labels
+            folder_counters = {}
+
+            for idx, superclass in enumerate(superclasses_list):
+                # Create folder if it doesn't exist
+                folder_path = os.path.join(output_path_pseudolabel, superclass)
+                if not os.path.exists(folder_path):
+                    os.makedirs(folder_path, exist_ok=True)
+                    folder_counters[superclass] = 0
+                else:
+                    # Initialize or increment the counter for this folder
+                    if superclass not in folder_counters:
+                        # Count existing .npy files to continue numbering
+                        existing = [f for f in os.listdir(folder_path) if f.endswith('.npy')]
+                        folder_counters[superclass] = len(existing) // 3  # 3 files per sample
+                    else:
+                        folder_counters[superclass] += 1
+
+                file_idx = folder_counters[superclass]
+
+                # Save generated_audio12, cond, and predictions for this index
+                np.save(os.path.join(folder_path, f"{file_idx}_audio.npy"), generated_audio12[idx].detach().cpu().numpy())
+                np.save(os.path.join(folder_path, f"{file_idx}_cond.npy"), cond[idx].detach().cpu().numpy())
+                np.save(os.path.join(folder_path, f"{file_idx}_pred.npy"), predictions[idx].numpy())
 
 
-
-
-        outfile = f'{i}_samples.npy'
-        # synth_data_path = os.path.join(ckpt_path, "synth_data_melspectrogram_loss_final/test")
-        # if not os.path.exists(synth_data_path):
-        #     os.makedirs(synth_data_path)
-        # new_out = os.path.join(synth_data_path, outfile)
-        new_out = os.path.join(output_directory, outfile)
-        np.save(new_out, generated_audio12.detach().cpu().numpy())
-        print('saved generated samples at iteration %s' % ckpt_iter)
         
-        outfile = f'{i}_labels.npy'
-        new_out = os.path.join(output_directory, outfile)
-        np.save(new_out, cond.detach().cpu().numpy())
-        print('saved generated samples at iteration %s' % ckpt_iter)
+
 
         
 
 
-        break
+
+
+        # outfile = f'{i}_samples.npy'
+        # # synth_data_path = os.path.join(ckpt_path, "synth_data_melspectrogram_loss_final/test")
+        # # if not os.path.exists(synth_data_path):
+        # #     os.makedirs(synth_data_path)
+        # # new_out = os.path.join(synth_data_path, outfile)
+        # new_out = os.path.join(output_directory, outfile)
+        # np.save(new_out, generated_audio12.detach().cpu().numpy())
+        # print('saved generated samples at iteration %s' % ckpt_iter)
+        
+        # outfile = f'{i}_labels.npy'
+        # new_out = os.path.join(output_directory, outfile)
+        # np.save(new_out, cond.detach().cpu().numpy())
+        # print('saved generated samples at iteration %s' % ckpt_iter)
+
 
     tok = time.time()
     print("Total time taken: ", tok-tik)

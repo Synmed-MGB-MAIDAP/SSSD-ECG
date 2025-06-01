@@ -100,7 +100,7 @@ def map_heartrate(hr):
     
     return one_hot_vector
 
-def categorize_demographics(data):
+def categorize_demographics(data, include_text_embedding=False):
     """
     Categorize demographics data into one-hot vectors.
     """
@@ -114,6 +114,9 @@ def categorize_demographics(data):
         gender = torch.tensor(map_gender(label_dict['gender']))
         hr = torch.tensor(map_heartrate(label_dict['hr']))
         label_vec = torch.cat((disease, age, gender, hr), dim=0)
+        if include_text_embedding:
+            embedding_vec = label_dict.get('text_embedding')
+            label_vec = torch.cat((label_vec, embedding_vec), dim=0)
         new_data.append([x, label_vec])
     return new_data
 

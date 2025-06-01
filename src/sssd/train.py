@@ -168,13 +168,8 @@ def train(output_directory,
         print("Train data size: ", len(train_data))
         print("Validation data size: ", len(val_data))
         
-        if not include_text_embed:
-            train_data = categorize_demographics(train_data)
-            val_data = categorize_demographics(val_data)
-            print("[INFO] Demographics categorized for train and val data.")
-        else:
-            # TODO: this should be handled better
-            print("[INFO] Text embeddings included, no demographics categorization.")
+        train_data = categorize_demographics(train_data, include_text_embedding=include_text_embed)
+        val_data = categorize_demographics(val_data, include_text_embedding=include_text_embed)
             
         
         trainloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True)

@@ -313,10 +313,14 @@ class MIMIC_IV_ECG_Dataset(Dataset):
         }
         
         if self.include_text_embeddings:
-            final_label = torch.cat((encoded_label, torch.tensor(embedding)), 0)
-            return x.transpose(0, 1), final_label
-        else:
-            return x, label_dict
+            label_dict["text_embedding"] = torch.tensor(embedding)
+        
+        # if self.include_text_embeddings:
+        #     final_label = torch.cat((encoded_label, torch.tensor(embedding)), 0)
+        #     return x.transpose(0, 1), final_label
+        # else:
+        #     return x, label_dict
+        return x, label_dict
 
     def __len__(self) -> int:
         return len(self.sheet)

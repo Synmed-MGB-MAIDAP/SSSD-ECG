@@ -97,9 +97,6 @@ def generate(output_directory,
     if num_samples!=400:
         warn(f"num_samples={num_samples} is not 400, generating less data")
 
-    # Initialize wandb for visualization
-    wandb.init(project="sssd-ecg-inference", name=f"{experiment_name}_inference_{ckpt_iter}")
-
     # generate experiment (local) path
     local_path = "{}/ch{}_T{}_betaT{}".format(experiment_name, model_config["res_channels"], 
                                            diffusion_config["T"], 
@@ -175,11 +172,7 @@ def generate(output_directory,
             resample_length=1024,
             include_text_embeddings=include_text_embed
         )
-        if not include_text_embed:
-            test_data = categorize_demographics(test_data)
-        else:
-            # TODO: this should be handled better
-            print("[INFO] Text embeddings included, no demographics categorization.")
+        test_data = categorize_demographics(test_data, include_text_embedding=include_text_embed)
         
         # Convert to numpy arrays
         real_data = []
@@ -217,10 +210,27 @@ def generate(output_directory,
     # Synth data path
     synth_data_path = os.path.join(
         ckpt_path,
-        f"synth_{trainset_config['finetune_dataset']}_{inference_split}_data_{ckpt_iter}"
+        f"synth_{trainset_config['finetune_dataset']}_{inference_split}_data_{ckpt_iter}_samples_{num_samples}"
     )
     os.makedirs(synth_data_path, exist_ok=True)
     print("Using synth data path: ", synth_data_path)
+    
+    # Logging wandb config
+    # Initialize wandb for visualization
+    print("Initializing wandb for logging")
+    wandb.init(
+        project="sssd-ecg-inference", 
+        name=f"{experiment_name}_inference_{ckpt_iter}",
+        config = {
+            "experiment_name": experiment_name,
+            "ckpt_iter": ckpt_iter,
+            "num_samples": num_samples,
+            "data_path": data_path,
+            "signal_length": signal_length,
+            "inference_split": inference_split,
+            "finetune_dataset": trainset_config["finetune_dataset"]
+        }
+    )
     
     for i, label in enumerate(chunks):
         print(f"Processing chunk {i+1}/{len(chunks)}")
@@ -237,10 +247,10 @@ def generate(output_directory,
         all_real_audio_used.append(real_audio)
         real_audio = torch.index_select(torch.from_numpy(real_audio), 1, index_8).float().cuda()
         
-        print(f"Generating {num_samples} samples for chunk {i}")
+        print(f"Generating {m_limit} samples for chunk {i}")
 
         # Generate with the appropriate signal length
-        generated_audio = sampling_label(net, (num_samples, 8, signal_length), 
+        generated_audio = sampling_label(net, (m_limit, 8, signal_length), 
                                diffusion_hyperparams,
                                cond=cond)
         
@@ -249,7 +259,7 @@ def generate(output_directory,
 
         end.record()
         torch.cuda.synchronize()
-        print(f'Generated {num_samples} samples in {int(start.elapsed_time(end)/1000)} seconds')
+        print(f'Generated {m_limit} samples in {int(start.elapsed_time(end)/1000)} seconds')
 
         # Get corresponding real data for this chunk
         start_idx = i * 400
@@ -299,6 +309,7 @@ def generate(output_directory,
     # Combine all chunks
     all_generated = np.concatenate(all_generated, axis=0)
     all_labels = np.concatenate(all_labels, axis=0)
+    all_real_audio_used = np.concatenate(all_real_audio_used, axis=0)
     
     # Save complete results
     np.save(os.path.join(synth_data_path, 'all_samples.npy'), all_generated)
@@ -311,7 +322,7 @@ def generate(output_directory,
     final_plot_dir = os.path.join(plot_dir, 'final_comparison')
     os.makedirs(final_plot_dir, exist_ok=True)
     plot_signal_pairs(
-        real_data,
+        all_real_audio_used,
         all_generated,
         final_plot_dir,
         'final',

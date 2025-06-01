@@ -15,7 +15,7 @@ from synthwave.architecture.mets.mets_ecg_encoder import resnet18_1d
 from synthwave.message.supervised_message import SupervisedMessage
 from synthwave.dataset.ptb_xl.ptb_xl_dataset import PtbXlDataset
 
-dataset = PtbXlDataset(path="/home/shared/physionet.org/files/ptb-xl/1.0.3")
+dataset = PtbXlDataset(path="/home/shared/backup/physionet.org/files/ptb-xl/1.0.3")
 diag_superclass_mapping = dataset._diag_superclass_mapping
 
 index_to_scpcode = ['1AVB', '2AVB', '3AVB', 'ABQRS', 'AFIB', 'AFLT', 'ALMI', 'AMI',
@@ -28,6 +28,8 @@ index_to_scpcode = ['1AVB', '2AVB', '3AVB', 'ABQRS', 'AFIB', 'AFLT', 'ALMI', 'AM
        'PSVT', 'PVC', 'QWAVE', 'RAO/RAE', 'RVH', 'SARRH', 'SBRAD',
        'SEHYP', 'SR', 'STACH', 'STD_', 'STE_', 'SVARR', 'SVTAC', 'TAB_',
        'TRIGU', 'VCLVH', 'WPW']
+superclass_labels = ['CD', 'HYP', 'MI', 'NORM', 'STTC']
+youden_thresholds = {'CD': 0.772, 'HYP': 0.006, 'MI': 0.649, 'NORM': 0.029, 'STTC': 0.118}
 
 def generate_four_leads(tensor):
     leadI = tensor[:,0,:].unsqueeze(1)
@@ -47,6 +49,7 @@ def generate_four_leads(tensor):
 
 def generate(output_directory,
              data_path,
+             model_path,
              classification_model_ckpt):
     
     
@@ -64,17 +67,17 @@ def generate(output_directory,
 
     # generate experiment (local) path
     # experiment_name = "raw"
-    local_path = "reproduce/ch{}_T{}_betaT{}".format(model_config["res_channels"], 
-                                           diffusion_config["T"], 
-                                           diffusion_config["beta_T"])
+    # local_path = "reproduce/ch{}_T{}_betaT{}".format(model_config["res_channels"], 
+    #                                        diffusion_config["T"], 
+    #                                        diffusion_config["beta_T"])
 
     # Get shared output_directory ready
-    output_directory = os.path.join(output_directory, local_path)
-    print ("OUTPUT DIR :", output_directory)
-    if not os.path.isdir(output_directory):
-        os.makedirs(output_directory)
-        os.chmod(output_directory, 0o775)
-    print("output directory", output_directory, flush=True)
+    # output_directory = os.path.join(output_directory, local_path)
+    # print ("OUTPUT DIR :", output_directory)
+    # if not os.path.isdir(output_directory):
+    #     os.makedirs(output_directory)
+    #     os.chmod(output_directory, 0o775)
+    # print("output directory", output_directory, flush=True)
 
     # map diffusion hyperparameters to gpu
     for key in diffusion_hyperparams:
@@ -90,9 +93,6 @@ def generate(output_directory,
     # if ckpt_iter == 'max':
     #     ckpt_iter = find_max_epoch(ckpt_path)
     # model_path = os.path.join(ckpt_path, '{}_job2.pkl'.format(ckpt_iter))
-    model_path = '/home/shared/output_sssd-ecg/raw/ch256_T200_betaT0.02/100000_download.pkl'
-   
-    print ("MODEL PATH", model_path)
     try:
         checkpoint = torch.load(model_path, map_location='cpu')
         net.load_state_dict(checkpoint['model_state_dict'])
@@ -108,7 +108,7 @@ def generate(output_directory,
     with open(os.path.join(data_path, 'superclass_label_counts.pkl'), 'rb') as f:
         result = pickle.load(f) 
     
-    superclass_model_checkpoint =  torch.load(classification_model_ckpt, map_location='cpu')
+    superclass_model_checkpoint =  torch.load(classification_model_ckpt, map_location='cuda:0', weights_only=False)
     # batch_size = 256
     num_channels = 12
     projection_size = 5
@@ -129,18 +129,23 @@ def generate(output_directory,
     for class_name, label_frequency in result.items():
         if class_name == '':
             continue
+        elif class_name == 'NORM':
+            size=10000
+        else:
+            size = 1000
         arrays, counts = zip(*label_frequency)
         counts = np.array(counts)
-        probabilities = counts / counts.sum()
-        indices = np.random.choice(len(arrays), size=3000, replace=True, p=probabilities)
+        # probabilities = counts / counts.sum()
+        indices = np.random.choice(len(arrays), size=size, replace=True)
         random_sample = np.array([arrays[i] for i in indices])
 
     
         # break down labels into chunks of 400
         chunks = []
-        for i in range(0, len(random_sample), 400):
-            if i + 400 <= len(random_sample):
-                chunks.append(random_sample[i:i+400])
+        ## TRY with 4 samples at a time
+        for i in range(0, len(random_sample), 4):
+            if i + 4 <= len(random_sample):
+                chunks.append(random_sample[i:i+4])
             else:
                 chunks.append(random_sample[i:])
         
@@ -170,20 +175,25 @@ def generate(output_directory,
             end.record()
             torch.cuda.synchronize()
             print('generated {} utterances of random_digit at iteration {} in {} seconds'.format(num_samples,
-                                                                                1, 
+                                                                                i, 
                                                                                 int(start.elapsed_time(end)/1000)))
 
         
             # use the above generated audio to classify the ECGs into different superclasses
             # create batch
-            batch = (generated_audio12, cond)
-            output = superclass_model(batch)
-            
+            # shape of generated audio should be (batch_size, num_channels, 1000)
+            message = SupervisedMessage(inputs=generated_audio12, targets=cond) 
+            # message = model(message)
+            output = superclass_model(message)
+            outputs = torch.nn.functional.sigmoid(outputs)
+            print ("Output:", output.outputs.cpu())
+            print (output.outputs.cpu().shape)
             # map predictions to labels
             predictions = output.outputs.cpu()
-            print ("Shape of predictions", np.array(predictions).shape)
+            input_conditions = output.targets.cpu() 
+            print ("Shape of predictions", predictions.shape)
             # map these predictions to superclass labels
-            diag_superclass_mapping = dataset._diag_superclass_mapping
+            # diag_superclass_mapping = dataset._diag_superclass_mapping
             scpcodes_list = [
                 [index_to_scpcode[i] for i, v in enumerate(row) if v == 1]
                 for row in predictions
@@ -192,33 +202,43 @@ def generate(output_directory,
                                     "|".join([diag_superclass_mapping[code] for code in scpcodes if code in diag_superclass_mapping])
                                     for scpcodes in scpcodes_list
                                 ]
+            # Map input_conditions to superclasses
+            input_scpcodes_list = [
+                [index_to_scpcode[i] for i, v in enumerate(row) if v == 1]
+                for row in input_conditions
+            ]
+            input_superclasses_list = [
+                "|".join([diag_superclass_mapping[code] for code in scpcodes if code in diag_superclass_mapping])
+                for scpcodes in input_scpcodes_list
+            ]
             
             # save the generated audio and actual and predicted labels:
-            output_path_pseudolabel = "/home/shared/output_sssd-ecg_pseudolabel"
+            # output_path_pseudolabel = "/home/shared/output_sssd-ecg_pseudolabel"
             # iterate over each element and save the generated audio and labels
             folder_counters = {}
 
-            for idx, superclass in enumerate(superclasses_list):
-                # Create folder if it doesn't exist
-                folder_path = os.path.join(output_path_pseudolabel, superclass)
-                if not os.path.exists(folder_path):
-                    os.makedirs(folder_path, exist_ok=True)
-                    folder_counters[superclass] = 0
-                else:
-                    # Initialize or increment the counter for this folder
-                    if superclass not in folder_counters:
-                        # Count existing .npy files to continue numbering
-                        existing = [f for f in os.listdir(folder_path) if f.endswith('.npy')]
-                        folder_counters[superclass] = len(existing) // 3  # 3 files per sample
+            for idx, (pred_superclass, input_superclass) in enumerate(zip(superclasses_list, input_superclasses_list)):
+                if pred_superclass == input_superclass:
+                    # Create folder if it doesn't exist
+                    folder_path = os.path.join(output_directory, pred_superclass)
+                    if not os.path.exists(folder_path):
+                        os.makedirs(folder_path, exist_ok=True)
+                        folder_counters[pred_superclass] = 0
                     else:
-                        folder_counters[superclass] += 1
+                        # Initialize or increment the counter for this folder
+                        if pred_superclass not in folder_counters:
+                            # Count existing .npy files to continue numbering
+                            existing = [f for f in os.listdir(folder_path) if f.endswith('.npy')]
+                            folder_counters[pred_superclass] = len(existing) // 3  # 3 files per sample
+                        else:
+                            folder_counters[pred_superclass] += 1
 
-                file_idx = folder_counters[superclass]
+                    file_idx = folder_counters[pred_superclass]
 
-                # Save generated_audio12, cond, and predictions for this index
-                np.save(os.path.join(folder_path, f"{file_idx}_audio.npy"), generated_audio12[idx].detach().cpu().numpy())
-                np.save(os.path.join(folder_path, f"{file_idx}_cond.npy"), cond[idx].detach().cpu().numpy())
-                np.save(os.path.join(folder_path, f"{file_idx}_pred.npy"), predictions[idx].numpy())
+                    # Save generated_audio12, cond, and predictions for this index
+                    np.save(os.path.join(folder_path, f"{file_idx}_samples.npy"), generated_audio12[idx].detach().cpu().numpy())
+                    np.save(os.path.join(folder_path, f"{file_idx}_labels.npy"), cond[idx].detach().cpu().numpy())
+                    np.save(os.path.join(folder_path, f"{file_idx}_predicted_labels.npy"), predictions[idx].numpy())
 
 
         
@@ -282,8 +302,13 @@ if __name__ == "__main__":
 
     global model_config
     model_config = config['wavenet_config']
-    
+
+    data_path = "/home/shared/pseudolabel_experiment/prerequisites"
+    model_path = "/home/shared/backup/output_sssd-ecg/raw/ch256_T200_betaT0.02/100000_download.pkl"
+    classification_model_ckpt = "/home/shared/pseudolabel_experiment/prerequisites/superclass classification model/checkpoint_best.pt"
+
     generate(**gen_config,
-             data_path="/home/shared/output_sssd-ecg_pseudolabel/",
-            classification_model_ckpt="/home/nutansahoo/synthwave/checkpoints/PseudoLabel/checkpoint_best.pt")
+             data_path=data_path,
+             model_path=model_path,
+            classification_model_ckpt=classification_model_ckpt)
 # python inference.py -c /home/nutansahoo/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD_ECG_inference.json

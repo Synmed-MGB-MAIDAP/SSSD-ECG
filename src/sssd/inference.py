@@ -214,22 +214,26 @@ def generate(output_directory,
             folder_counters = {}
 
             for idx, (pred_superclass, input_superclass) in enumerate(zip(superclasses_list, input_superclasses_list)):
-                if pred_superclass == input_superclass:
+                pred_set = set(pred_superclass.split('|'))
+                input_set = set(input_superclass.split('|'))
+
+                # Check if all elements in input_superclass are present in pred_superclass
+                if input_set.issubset(pred_set): # pred_superclass = 'CD|HYP|STTC', input_superclass = 'CD|HYP' - This will satisfy the condition.
                     # Create folder if it doesn't exist
-                    folder_path = os.path.join(output_directory, pred_superclass)
+                    folder_path = os.path.join(output_directory, input_superclass)
                     if not os.path.exists(folder_path):
                         os.makedirs(folder_path, exist_ok=True)
-                        folder_counters[pred_superclass] = 0
+                        folder_counters[input_superclass] = 0
                     else:
                         # Initialize or increment the counter for this folder
-                        if pred_superclass not in folder_counters:
+                        if input_superclass not in folder_counters:
                             # Count existing .npy files to continue numbering
                             existing = [f for f in os.listdir(folder_path) if f.endswith('.npy')]
-                            folder_counters[pred_superclass] = len(existing) // 3  # 3 files per sample
+                            folder_counters[input_superclass] = len(existing) // 3  # 3 files per sample
                         else:
-                            folder_counters[pred_superclass] += 1
+                            folder_counters[input_superclass] += 1
 
-                    file_idx = folder_counters[pred_superclass]
+                    file_idx = folder_counters[input_superclass]
 
                     # Save generated_audio12, cond, and predictions for this index
                     np.save(os.path.join(folder_path, f"{file_idx}_samples.npy"), generated_audio12[idx].detach().cpu().numpy())

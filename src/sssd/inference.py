@@ -194,7 +194,7 @@ def generate(output_directory,
             ]
             print ("Input SCP Codes list", input_scpcodes_list)
             input_superclasses_list = [
-                "|".join([diag_superclass_mapping[code] for code in scpcodes if code in diag_superclass_mapping])
+                "|".join(set([diag_superclass_mapping[code] for code in scpcodes if code in diag_superclass_mapping]))
                 for scpcodes in input_scpcodes_list
             ]
 
@@ -237,13 +237,10 @@ def generate(output_directory,
                     np.save(os.path.join(folder_path, f"{file_idx}_predicted_labels.npy"), predictions[idx].numpy())
 
 
-        
+    
 
-
-        
-
-    with open(os.path.join(output_directory, "track_input_n_predicted_superclass.json"), "w") as f:
-        json.dump(all_superclass_results, f, indent=2)
+                with open(os.path.join(output_directory, "track_input_n_predicted_superclass.json"), "w") as f:
+                    json.dump(all_superclass_results, f, indent=2)
 
     tok = time.time()
     print("Total time taken: ", tok-tik)

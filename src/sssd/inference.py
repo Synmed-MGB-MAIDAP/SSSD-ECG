@@ -81,20 +81,6 @@ def generate(output_directory,
     data_path (str):                  path to dataset, numpy array.
     """
 
-    # generate experiment (local) path
-    # experiment_name = "raw"
-    # local_path = "reproduce/ch{}_T{}_betaT{}".format(model_config["res_channels"], 
-    #                                        diffusion_config["T"], 
-    #                                        diffusion_config["beta_T"])
-
-    # Get shared output_directory ready
-    # output_directory = os.path.join(output_directory, local_path)
-    # print ("OUTPUT DIR :", output_directory)
-    # if not os.path.isdir(output_directory):
-    #     os.makedirs(output_directory)
-    #     os.chmod(output_directory, 0o775)
-    # print("output directory", output_directory, flush=True)
-
     # map diffusion hyperparameters to gpu
     for key in diffusion_hyperparams:
         if key != "T":
@@ -104,21 +90,12 @@ def generate(output_directory,
     net = SSSD_ECG(**model_config).cuda()
     print_size(net)
 
-    # load checkpoint
-    # ckpt_path = os.path.join(ckpt_path, local_path)
-    # if ckpt_iter == 'max':
-    #     ckpt_iter = find_max_epoch(ckpt_path)
-    # model_path = os.path.join(ckpt_path, '{}_job2.pkl'.format(ckpt_iter))
     try:
         checkpoint = torch.load(model_path, map_location='cpu')
         net.load_state_dict(checkpoint['model_state_dict'])
         print('Successfully loaded model at iteration {}'.format(1))
     except:
         raise Exception('No valid model found')
-
-    # label_path = os.path.join(data_path, 'labels')
-    # print ("LABEL PATH", label_path)
-    # labels = np.load(os.path.join(label_path, 'ptbxl_test_labels.npy'))
 
     # load the labels which will be used for generation
     with open(os.path.join(data_path, 'superclass_label_counts.pkl'), 'rb') as f:
@@ -141,7 +118,7 @@ def generate(output_directory,
     superclass_model.eval()
     superclass_model.cuda()
 
-
+    all_superclass_results = []
     for class_name, label_frequency in result.items():
         if class_name == '':
             continue
@@ -168,8 +145,6 @@ def generate(output_directory,
         print("Starting generation")
         tik = time.time()
         for i, label in enumerate(chunks):
-            # if i!=len(chunks)-1:
-            #     continue
             cond = torch.from_numpy(label).cuda().float()
 
             # inference
@@ -177,7 +152,6 @@ def generate(output_directory,
             end = torch.cuda.Event(enable_timing=True)
             start.record()
 
-            # if num_samples != len(cond):
             num_samples = len(cond)
             
             print("Generating {} samples for chunk {}".format(num_samples, i))
@@ -195,13 +169,13 @@ def generate(output_directory,
                                                                                 int(start.elapsed_time(end)/1000)))
 
         
-            # use the above generated audio to classify the ECGs into different superclasses
+            # use the above generated ecg to classify the ECGs into different superclasses
             # create batch
             # shape of generated audio should be (batch_size, num_channels, 1000)
             message = SupervisedMessage(inputs=generated_audio12, targets=cond) 
             # message = model(message)
             output = superclass_model(message)
-            # outputs = torch.nn.functional.sigmoid(outputs)
+            # map predictions to superclasses
             superclasses_list = get_superclass_labels_from_logits(output.outputs.cpu())
 
             print ("Output:", output.outputs.cpu())
@@ -212,16 +186,7 @@ def generate(output_directory,
             input_conditions = output.targets.cpu() 
             print ("len of superclasses_list", superclasses_list, len(superclasses_list))
             print ("Shape of input conditions", input_conditions.shape)
-            # map these predictions to superclass labels
-            # diag_superclass_mapping = dataset._diag_superclass_mapping
-            # scpcodes_list = [
-            #     [index_to_scpcode[i] for i, v in enumerate(row) if v == 1]
-            #     for row in predictions
-            #                 ]
-            # superclasses_list = [
-            #                         "|".join([diag_superclass_mapping[code] for code in scpcodes if code in diag_superclass_mapping])
-            #                         for scpcodes in scpcodes_list
-            #                     ]
+
             # Map input_conditions to superclasses
             input_scpcodes_list = [
                 [index_to_scpcode[i] for i, v in enumerate(row) if v == 1]
@@ -235,8 +200,16 @@ def generate(output_directory,
 
             print ("Input superclass list",input_superclasses_list, len(input_superclasses_list))
             
-            # save the generated audio and actual and predicted labels:
-            # output_path_pseudolabel = "/home/shared/output_sssd-ecg_pseudolabel"
+            chunk_result = {
+                "iteration": i,
+                "class_name": class_name,
+                "label": label,
+                "predicted logits": output.outputs.cpu(),
+                "input_superclasses_list": input_superclasses_list,
+                "predicted_superclasses_list": superclasses_list
+            }
+            all_superclass_results.append(chunk_result)
+
             # iterate over each element and save the generated audio and labels
             folder_counters = {}
 
@@ -269,23 +242,8 @@ def generate(output_directory,
 
         
 
-
-
-
-        # outfile = f'{i}_samples.npy'
-        # # synth_data_path = os.path.join(ckpt_path, "synth_data_melspectrogram_loss_final/test")
-        # # if not os.path.exists(synth_data_path):
-        # #     os.makedirs(synth_data_path)
-        # # new_out = os.path.join(synth_data_path, outfile)
-        # new_out = os.path.join(output_directory, outfile)
-        # np.save(new_out, generated_audio12.detach().cpu().numpy())
-        # print('saved generated samples at iteration %s' % ckpt_iter)
-        
-        # outfile = f'{i}_labels.npy'
-        # new_out = os.path.join(output_directory, outfile)
-        # np.save(new_out, cond.detach().cpu().numpy())
-        # print('saved generated samples at iteration %s' % ckpt_iter)
-
+    with open(os.path.join(output_directory, "track_input_n_predicted_superclass.json"), "w") as f:
+        json.dump(all_superclass_results, f, indent=2)
 
     tok = time.time()
     print("Total time taken: ", tok-tik)
@@ -295,12 +253,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_inference.json',
                         help='JSON file for configuration')
-    # parser.add_argument('-ckpt_iter', '--ckpt_iter', default=100000,
-    #                     help='Which checkpoint to use; assign a number or "max"')
-    # parser.add_argument('-n', '--num_samples', type=int, default=400,
-    #                     help='Number of utterances to be generated')
-    # parser.add_argument('-d', '--data_path', type=str, default='/home/shared/output_sssd-ecg_pseudolabel/', 
-    #                     help='Path to the labels for generation and for saving the generated ECGs')
+
     args = parser.parse_args()
 
     # Parse configs. Globals nicer in this case

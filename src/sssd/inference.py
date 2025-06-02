@@ -119,13 +119,14 @@ def generate(output_directory,
     superclass_model.cuda()
 
     all_superclass_results = []
+    folder_counters = {}
     for class_name, label_frequency in result.items():
         if class_name == '':
             continue
         elif class_name == 'NORM':
             size=10000
         else:
-            size = 1000
+            size = 1500
         arrays, counts = zip(*label_frequency)
         counts = np.array(counts)
         # probabilities = counts / counts.sum()
@@ -135,10 +136,9 @@ def generate(output_directory,
     
         # break down labels into chunks of 400
         chunks = []
-        ## TRY with 4 samples at a time
-        for i in range(0, len(random_sample), 4):
-            if i + 4 <= len(random_sample):
-                chunks.append(random_sample[i:i+4])
+        for i in range(0, len(random_sample), 400):
+            if i + 400 <= len(random_sample):
+                chunks.append(random_sample[i:i+400])
             else:
                 chunks.append(random_sample[i:])
         
@@ -171,7 +171,7 @@ def generate(output_directory,
         
             # use the above generated ecg to classify the ECGs into different superclasses
             # create batch
-            # shape of generated audio should be (batch_size, num_channels, 1000)
+            # shape of generated audio is (batch_size, num_channels, 1000)
             message = SupervisedMessage(inputs=generated_audio12, targets=cond) 
             # message = model(message)
             output = superclass_model(message)
@@ -200,18 +200,17 @@ def generate(output_directory,
 
             print ("Input superclass list",input_superclasses_list, len(input_superclasses_list))
             
-            chunk_result = {
-                "iteration": i,
-                "class_name": class_name,
-                "label": label,
-                "predicted logits": output.outputs.cpu(),
-                "input_superclasses_list": input_superclasses_list,
-                "predicted_superclasses_list": superclasses_list
-            }
-            all_superclass_results.append(chunk_result)
+            # chunk_result = {
+            #     "iteration": i,
+            #     "class_name": class_name,
+            #     "label": np.array(label).tolist(),
+            #     "predicted logits": output.outputs.cpu().detach().numpy().tolist(),
+            #     "input_superclasses_list": input_superclasses_list,
+            #     "predicted_superclasses_list": superclasses_list
+            # }
+            # all_superclass_results.append(chunk_result)
 
             # iterate over each element and save the generated audio and labels
-            folder_counters = {}
 
             for idx, (pred_superclass, input_superclass) in enumerate(zip(superclasses_list, input_superclasses_list)):
                 pred_set = set(pred_superclass.split('|'))
@@ -238,13 +237,12 @@ def generate(output_directory,
                     # Save generated_audio12, cond, and predictions for this index
                     np.save(os.path.join(folder_path, f"{file_idx}_samples.npy"), generated_audio12[idx].detach().cpu().numpy())
                     np.save(os.path.join(folder_path, f"{file_idx}_labels.npy"), cond[idx].detach().cpu().numpy())
-                    np.save(os.path.join(folder_path, f"{file_idx}_predicted_labels.npy"), predictions[idx].numpy())
+                    np.save(os.path.join(folder_path, f"{file_idx}_predicted_labels.npy"), predictions[idx].detach().numpy())
 
 
     
-
-                with open(os.path.join(output_directory, "track_input_n_predicted_superclass.json"), "w") as f:
-                    json.dump(all_superclass_results, f, indent=2)
+                # with open(os.path.join(output_directory, "track_input_n_predicted_superclass.json"), "w") as f:
+                #     json.dump(all_superclass_results, f, indent=2)
 
     tok = time.time()
     print("Total time taken: ", tok-tik)
@@ -288,4 +286,5 @@ if __name__ == "__main__":
              data_path=data_path,
              model_path=model_path,
             classification_model_ckpt=classification_model_ckpt)
-# python inference.py -c /home/nutansahoo/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD_ECG_inference.json
+# nohup python inference.py -c /home/nutansahoo/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD_ECG_inference.json > inference.log 2>&1 &
+# 240139

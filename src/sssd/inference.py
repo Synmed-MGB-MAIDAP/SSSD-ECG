@@ -16,8 +16,9 @@ from synthwave.message.supervised_message import SupervisedMessage
 from synthwave.dataset.ptb_xl.ptb_xl_dataset import PtbXlDataset
 
 dataset = PtbXlDataset(path="/home/shared/backup/physionet.org/files/ptb-xl/1.0.3")
+metadata = dataset._prepare_labels_and_metadata()
 diag_superclass_mapping = dataset._diag_superclass_mapping
-
+print ("diag_superclass_mapping", diag_superclass_mapping)
 index_to_scpcode = ['1AVB', '2AVB', '3AVB', 'ABQRS', 'AFIB', 'AFLT', 'ALMI', 'AMI',
        'ANEUR', 'ASMI', 'BIGU', 'CLBBB', 'CRBBB', 'DIG', 'EL', 'HVOLT',
        'ILBBB', 'ILMI', 'IMI', 'INJAL', 'INJAS', 'INJIL', 'INJIN',
@@ -28,8 +29,23 @@ index_to_scpcode = ['1AVB', '2AVB', '3AVB', 'ABQRS', 'AFIB', 'AFLT', 'ALMI', 'AM
        'PSVT', 'PVC', 'QWAVE', 'RAO/RAE', 'RVH', 'SARRH', 'SBRAD',
        'SEHYP', 'SR', 'STACH', 'STD_', 'STE_', 'SVARR', 'SVTAC', 'TAB_',
        'TRIGU', 'VCLVH', 'WPW']
-superclass_labels = ['CD', 'HYP', 'MI', 'NORM', 'STTC']
+superclass_labels =  np.array(['CD', 'HYP', 'MI', 'NORM', 'STTC'])
 youden_thresholds = {'CD': 0.772, 'HYP': 0.006, 'MI': 0.649, 'NORM': 0.029, 'STTC': 0.118}
+
+def get_superclass_labels_from_logits(logits):
+    """
+    Args:
+        logits: torch.Tensor of shape (batch_size, num_classes)
+
+    Returns:
+        List of lists: predicted superclass labels for each sample
+    """
+    probs = torch.sigmoid(logits).detach().numpy()
+    thresholds = np.array([youden_thresholds[label] for label in superclass_labels])
+    predicted = probs > thresholds
+    indices = [np.where(row)[0] for row in predicted]
+    predicted_labels = ["|".join(superclass_labels[idx].tolist()) for idx in indices]
+    return predicted_labels
 
 def generate_four_leads(tensor):
     leadI = tensor[:,0,:].unsqueeze(1)
@@ -185,32 +201,39 @@ def generate(output_directory,
             message = SupervisedMessage(inputs=generated_audio12, targets=cond) 
             # message = model(message)
             output = superclass_model(message)
-            outputs = torch.nn.functional.sigmoid(outputs)
+            # outputs = torch.nn.functional.sigmoid(outputs)
+            superclasses_list = get_superclass_labels_from_logits(output.outputs.cpu())
+
             print ("Output:", output.outputs.cpu())
             print (output.outputs.cpu().shape)
+
             # map predictions to labels
             predictions = output.outputs.cpu()
             input_conditions = output.targets.cpu() 
-            print ("Shape of predictions", predictions.shape)
+            print ("len of superclasses_list", superclasses_list, len(superclasses_list))
+            print ("Shape of input conditions", input_conditions.shape)
             # map these predictions to superclass labels
             # diag_superclass_mapping = dataset._diag_superclass_mapping
-            scpcodes_list = [
-                [index_to_scpcode[i] for i, v in enumerate(row) if v == 1]
-                for row in predictions
-                            ]
-            superclasses_list = [
-                                    "|".join([diag_superclass_mapping[code] for code in scpcodes if code in diag_superclass_mapping])
-                                    for scpcodes in scpcodes_list
-                                ]
+            # scpcodes_list = [
+            #     [index_to_scpcode[i] for i, v in enumerate(row) if v == 1]
+            #     for row in predictions
+            #                 ]
+            # superclasses_list = [
+            #                         "|".join([diag_superclass_mapping[code] for code in scpcodes if code in diag_superclass_mapping])
+            #                         for scpcodes in scpcodes_list
+            #                     ]
             # Map input_conditions to superclasses
             input_scpcodes_list = [
                 [index_to_scpcode[i] for i, v in enumerate(row) if v == 1]
                 for row in input_conditions
             ]
+            print ("Input SCP Codes list", input_scpcodes_list)
             input_superclasses_list = [
                 "|".join([diag_superclass_mapping[code] for code in scpcodes if code in diag_superclass_mapping])
                 for scpcodes in input_scpcodes_list
             ]
+
+            print ("Input superclass list",input_superclasses_list, len(input_superclasses_list))
             
             # save the generated audio and actual and predicted labels:
             # output_path_pseudolabel = "/home/shared/output_sssd-ecg_pseudolabel"

@@ -240,6 +240,16 @@ class SSSD_ECG(nn.Module):
                     ),
                     nn.ReLU(),
                 )
+            elif embed_layer_types[i] == "FC+A+LN":
+                return nn.Sequential(
+                    nn.Linear(
+                        d_in,
+                        d_out,
+                        bias=True,
+                    ),
+                    nn.ReLU(),
+                    nn.LayerNorm(d_out),
+                )
             else:
                 raise ValueError(
                     f"Unknown embedding layer type: {embed_layer_types[i]}"

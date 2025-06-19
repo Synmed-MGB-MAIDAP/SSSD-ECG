@@ -9,11 +9,11 @@ from utils.util import find_max_epoch, training_loss_label, calc_diffusion_hyper
 from eval import evaluate_model
 import wandb
 from utils.mimic_4_preprocess import MIMIC_IV_ECG_Dataset
-from utils.demographics_mapping import categorize_demographics
-from transformers import get_cosine_schedule_with_warmup
+# from utils.demographics_mapping import categorize_demographics
+# from transformers import get_cosine_schedule_with_warmup
 from inference import generate_four_leads
-import random
-import pdb
+# import random
+# import pdb
 
 def train(output_directory,
           ckpt_iter,
@@ -77,7 +77,7 @@ def train(output_directory,
     net = SSSD_ECG(**model_config).cuda()
     total_params = sum(p.numel() for p in net.parameters())
     print(f"Total Parameters: {total_params:,}")
-    wandb.log({"total_params": total_params})
+    wandb.log({"total_params": total_params}, step=0)
     
     # define optimizer
     print(f"[INFO] Initializing Adam optimizer with learning rate: {learning_rate}")
@@ -107,15 +107,25 @@ def train(output_directory,
                 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
             print('Successfully loaded model at iteration {}'.format(ckpt_iter))
-            wandb.log({"checkpoint_loaded": ckpt_iter})
+            wandb.log({"checkpoint_loaded": ckpt_iter}, step=0)
+            
+            temp_curr_lr = optimizer.param_groups[0]['lr']
+            print(f"[INFO] Current learning rate from checkpoint: {temp_curr_lr}")
+            if temp_curr_lr != learning_rate:
+                print("\n\n =========================================================================")
+                print(f"[INFO] Updating learning rate from {temp_curr_lr} to {learning_rate}")
+                print(" =========================================================================\n\n")
+                for g in optimizer.param_groups:
+                    g['lr'] = learning_rate
+            
         except Exception as e:
             ckpt_iter = -1
             print(f'No valid checkpoint model found, start training from initialization try. Error: {e}')
-            wandb.log({"checkpoint_loaded": -1})
+            wandb.log({"checkpoint_loaded": -1}, step=0)
     else:
         ckpt_iter = -1
         print('No valid checkpoint model found, start training from initialization.')
-        wandb.log({"checkpoint_loaded": -1})
+        wandb.log({"checkpoint_loaded": -1}, step=0)
         
     
     print("net device", next(net.parameters()).device)
@@ -145,7 +155,7 @@ def train(output_directory,
         print(f"[INFO] PTBXL val_data loaded: {len(val_data)} samples")
 
         valloader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, drop_last=False)
-    
+        all_valloader = None  # No separate all validation loader for PTBXL
 
     elif trainset_config["finetune_dataset"] == "mimic_iv":
         print("Loading MIMIC-IV dataset")
@@ -164,16 +174,24 @@ def train(output_directory,
             usage="val",
             resample_length=1024,
             include_text_embeddings=include_text_embed,
+            max_samples=1000  # Limit validation set size for faster evaluation
+        )
+        all_val_data = MIMIC_IV_ECG_Dataset(
+            dataset_path=trainset_config["data_path"],
+            usage="val",
+            resample_length=1024,
+            include_text_embeddings=include_text_embed,
         )
         print("Train data size: ", len(train_data))
         print("Validation data size: ", len(val_data))
+        print("All validation data size: ", len(all_val_data))
         
-        train_data = categorize_demographics(train_data, include_text_embedding=include_text_embed)
-        val_data = categorize_demographics(val_data, include_text_embedding=include_text_embed)
-            
+        # train_data = categorize_demographics(train_data, include_text_embedding=include_text_embed)
+        # val_data = categorize_demographics(val_data, include_text_embedding=include_text_embed)
         
         trainloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
         valloader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False)
+        all_valloader = torch.utils.data.DataLoader(all_val_data, batch_size=batch_size, shuffle=False)
     else:
         print(f"[ERROR] Unknown finetune_dataset: {trainset_config['finetune_dataset']}")
         raise ValueError(f"Unknown finetune_dataset: {trainset_config['finetune_dataset']}")
@@ -213,75 +231,82 @@ def train(output_directory,
             X = audio, label
             
             loss = training_loss_label(net, "MSE", X, diffusion_hyperparams)
-            wandb.log({'training loss': loss.item(), 'iteration': n_iter})
+            wandb.log({'training loss': loss.item(), 'iteration': n_iter}, step=n_iter)
             loss.backward()
             optimizer.step()
             # scheduler.step()
 
             if n_iter % iters_per_logging == 0:
                 print("[LOGGING] iteration: {} \tloss: {}".format(n_iter, loss.item()))
-                wandb.log({"iteration": n_iter, "loss": loss.item()})
+                wandb.log({"loss": loss.item()}, step=n_iter)
 
                 # current_lr = scheduler.get_last_lr()[0]
                 # wandb.log({"learning_rate": current_lr, "iteration": n_iter})
+                
                 # --- EVALUATION STEP ---
                 print("[EVAL] Evaluating model at iteration {}".format(n_iter))
                 val_loss = evaluate_model(net, valloader, index_8, diffusion_hyperparams)
                 print(f"[VAL] iteration: {n_iter} \tval_loss: {val_loss}")
-                wandb.log({"iteration": n_iter, "val_loss": val_loss})
-
-                # --- ECG PLOTTING AND LOGGING ---
-                # Choose visualization data based on configuration
-                print(f"[VIZ] viz_split_config: {viz_split_config}")
-                if viz_split_config['use_ptbxl']:
-                    print("[VIZ] Using PTBXL validation split for visualization.")
-                    # Use PTBXL validation split regardless of training dataset
-                    # Always load PTBXL validation data for visualization if needed
-                    if trainset_config["finetune_dataset"] != "ptbxl_all":
-                        print(f"[VIZ] Loading PTBXL val data from {ptbxl_data_path}")
-                        ptbxl_val_data = np.load(os.path.join(ptbxl_data_path, 'data/ptbxl_val_data.npy'))
-                        ptbxl_val_labels = np.load(os.path.join(ptbxl_data_path, 'labels/ptbxl_val_labels.npy'))
-                        ptbxl_val_data_list = []
-                        for i in range(len(ptbxl_val_data)):
-                            ptbxl_val_data_list.append([ptbxl_val_data[i], ptbxl_val_labels[i]])
-                        ptbxl_valloader = torch.utils.data.DataLoader(ptbxl_val_data_list, shuffle=False, batch_size=6, drop_last=False)
-                        viz_batches = list(ptbxl_valloader)
-                    else:
-                        viz_batches = list(valloader)
-                else:
-                    print("[VIZ] Using MIMIC-IV validation split for visualization.")
-                    # Use MIMIC-IV validation split
-                    viz_batches = list(valloader)
+                wandb.log({"val_loss": val_loss}, step=n_iter)
                 
-                num_samples = min(10, len(viz_batches))
-                fixed_batches = viz_batches[:num_samples]
-                ecg_figs = []
-                for i, (real_audio, real_label) in enumerate(fixed_batches):
-                    print(f"[VIZ] Generating ECG comparison for sample {i} at iteration {n_iter}")
-                    # pdb.set_trace()
-                    real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
-                    real_label = real_label.float().cuda()
-                    # Generate synthetic ECGs with the same label
-                    synth_audio = sampling_label(
-                        net,
-                        real_audio8.shape,
-                        diffusion_hyperparams,
-                        cond=real_label
-                    )
-                    synth_audio_np = synth_audio.detach().cpu().numpy()
-                    real_audio_np = real_audio.detach().cpu().numpy()
-                    # Plot comparison for the first sample in the batch
-                    synth_audio12 = generate_four_leads(synth_audio)
-                    synth_audio12_np = synth_audio12.detach().cpu().numpy()
-                    fig = plot_ecg_comparison(
-                        real_audio_np[0],
-                        synth_audio12_np[0],
-                        label=f"iter{n_iter}_sample{i}",
-                        return_fig=True
-                    )
-                    ecg_figs.append(wandb.Image(fig, caption=f"iter{n_iter}_sample{i}"))
-                # Log all images as a list
-                wandb.log({"ecg_comparisons": ecg_figs, "iteration": n_iter})
+                # --- EVALUATION ON ALL VALIDATION DATA ---
+                if (all_valloader) and (n_iter % (5*iters_per_logging) == 0):
+                    print("[ALL VAL] Evaluating model on all val data at iteration {}".format(n_iter))
+                    all_val_loss = evaluate_model(net, all_valloader, index_8, diffusion_hyperparams)
+                    print(f"[ALL VAL] iteration: {n_iter} \tall_val_loss: {all_val_loss}")
+                    wandb.log({"all_val_loss": all_val_loss}, step=n_iter)
+
+                    # --- ECG PLOTTING AND LOGGING ---
+                    # Choose visualization data based on configuration
+                    if bool(viz_split_config['use_ptbxl']):
+                        print("[VIZ] Using PTBXL validation split for visualization.")
+                        # Use PTBXL validation split regardless of training dataset
+                        # Always load PTBXL validation data for visualization if needed
+                        if trainset_config["finetune_dataset"] != "ptbxl_all":
+                            print(f"[VIZ] Loading PTBXL val data from {ptbxl_data_path}")
+                            ptbxl_val_data = np.load(os.path.join(ptbxl_data_path, 'data/ptbxl_val_data.npy'))
+                            ptbxl_val_labels = np.load(os.path.join(ptbxl_data_path, 'labels/ptbxl_val_labels.npy'))
+                            ptbxl_val_data_list = []
+                            for i in range(len(ptbxl_val_data)):
+                                ptbxl_val_data_list.append([ptbxl_val_data[i], ptbxl_val_labels[i]])
+                            ptbxl_valloader = torch.utils.data.DataLoader(ptbxl_val_data_list, shuffle=False, batch_size=6, drop_last=False)
+                            viz_batches = list(ptbxl_valloader)
+                        else:
+                            viz_batches = list(valloader)
+                    else:
+                        print("[VIZ] Using MIMIC-IV validation split for visualization.")
+                        # Use MIMIC-IV validation split
+                        viz_batches = list(valloader)
+                    
+                    num_samples = min(10, len(viz_batches))
+                    fixed_batches = viz_batches[:num_samples]
+                    ecg_figs = []
+                    for i, (real_audio, real_label) in enumerate(fixed_batches):
+                        print(f"[VIZ] Generating ECG comparison for sample {i} at iteration {n_iter}")
+                        # pdb.set_trace()
+                        real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
+                        real_label = real_label.float().cuda()
+                        # Generate synthetic ECGs with the same label
+                        synth_audio = sampling_label(
+                            net,
+                            real_audio8.shape,
+                            diffusion_hyperparams,
+                            cond=real_label
+                        )
+                        synth_audio_np = synth_audio.detach().cpu().numpy()
+                        real_audio_np = real_audio.detach().cpu().numpy()
+                        # Plot comparison for the first sample in the batch
+                        synth_audio12 = generate_four_leads(synth_audio)
+                        synth_audio12_np = synth_audio12.detach().cpu().numpy()
+                        fig = plot_ecg_comparison(
+                            real_audio_np[0],
+                            synth_audio12_np[0],
+                            label=f"iter{n_iter}_sample{i}",
+                            return_fig=True
+                        )
+                        ecg_figs.append(wandb.Image(fig, caption=f"iter{n_iter}_sample{i}"))
+                    # Log all images as a list
+                    wandb.log({"ecg_comparisons": ecg_figs}, step=n_iter)
 
             # save checkpoint
             if n_iter > 0 and n_iter % iters_per_ckpt == 0:
@@ -294,7 +319,7 @@ def train(output_directory,
                 checkpoint_path = os.path.join(output_directory, checkpoint_name)
                 print(f"[CHECKPOINT] to checkpoint path, {checkpoint_path}")
                 wandb.save(checkpoint_path)
-                wandb.log({"checkpoint_saved": n_iter})
+                wandb.log({"checkpoint_saved": n_iter}, step=n_iter)
 
             n_iter += 1
 
@@ -345,7 +370,7 @@ if __name__ == "__main__":
 
     # Add visualization split configuration
     global viz_split_config
-    viz_split_config = config.get('viz_split_config', {'use_ptbxl': True, "ptbxl_data_path": "/home/shared/ptbxl_data_sssd-ecg/condition_mimic_15"})  # Default to PTBXL if not specified
+    viz_split_config = config.get('viz_split_config', {'use_ptbxl': "True", "ptbxl_data_path": "/home/shared/ptbxl_data_sssd-ecg/condition_mimic_15"})  # Default to PTBXL if not specified
     print(f"[INFO] viz_split_config: {viz_split_config}")
 
     train(**train_config, **project_config, **viz_split_config)

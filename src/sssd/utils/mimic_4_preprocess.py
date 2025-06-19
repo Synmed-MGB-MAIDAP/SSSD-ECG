@@ -11,7 +11,7 @@ import numpy as np
 from scipy import signal
 import wfdb
 from wfdb import processing
-from utils.demographics_mapping import map_age, map_gender, map_heartrate, categorize_demographics
+from utils.demographics_mapping import map_age, map_gender, map_heartrate, categorize_demographics, categorize_demographics_for_one
 import pickle
 
 def create_encoding_vector(input_list):
@@ -315,12 +315,18 @@ class MIMIC_IV_ECG_Dataset(Dataset):
         if self.include_text_embeddings:
             label_dict["text_embedding"] = torch.tensor(embedding)
         
+        return categorize_demographics_for_one(
+            (x, label_dict), 
+            include_text_embedding=self.include_text_embeddings
+        )
+        
         # if self.include_text_embeddings:
         #     final_label = torch.cat((encoded_label, torch.tensor(embedding)), 0)
         #     return x.transpose(0, 1), final_label
         # else:
         #     return x, label_dict
-        return x, label_dict
+        
+        # return x, label_dict
 
     def __len__(self) -> int:
         return len(self.sheet)
@@ -334,14 +340,15 @@ if __name__ == '__main__':
     # train_data = MIMIC_IV_ECG_Dataset(usage='train', resample_length=1024, max_samples=100)
     # val_data = MIMIC_IV_ECG_Dataset(usage='val', resample_length=1024, max_samples=100)
     
-    new_data = categorize_demographics(
-        data,
-        include_demographics=False,
-        include_text_embedding=True,
-        )
-    print(new_data[0])
+    # new_data = categorize_demographics(
+    #     data,
+    #     include_demographics=False,
+    #     include_text_embedding=True,
+    #     )
+    # print(new_data[0])
     
-    dataloader = DataLoader(new_data, batch_size=2, shuffle=True)
+    
+    dataloader = DataLoader(data, batch_size=2, shuffle=True)
     print(len(dataloader))
 
     for sample in dataloader:

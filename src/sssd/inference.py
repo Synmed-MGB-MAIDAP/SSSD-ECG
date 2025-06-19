@@ -172,7 +172,7 @@ def generate(output_directory,
             resample_length=1024,
             include_text_embeddings=include_text_embed
         )
-        test_data = categorize_demographics(test_data, include_text_embedding=include_text_embed)
+        # test_data = categorize_demographics(test_data, include_text_embedding=include_text_embed)
         
         # Convert to numpy arrays
         real_data = []

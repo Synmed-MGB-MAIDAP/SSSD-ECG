@@ -36,6 +36,7 @@
         "segment_length":1000,
         "sampling_rate": 100,
         "finetune_dataset":"mimic_iv",
+        "loss_fn": "MSE",
         "data_path":"/home/shared/backup/mmic_iv_ecg/files/mimic-iv-ecg/1.0"
     },
     "gen_config":{

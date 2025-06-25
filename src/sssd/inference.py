@@ -82,8 +82,8 @@ def generate(output_directory,
         raise Exception('No valid model found')
 
     label_path = os.path.join(data_path, 'labels')
-    labels = np.load(os.path.join(label_path, f'ptbxl_{inference_split}_labels.npy'))
-    print("Loaded labels from ", os.path.join(label_path, f'ptbxl_{inference_split}_labels.npy'))
+    labels = np.load(os.path.join(label_path, f'{trainset_config["finetune_dataset"]}_{inference_split}_labels.npy'))
+    print("Loaded labels from ", os.path.join(label_path, f'{trainset_config["finetune_dataset"]}_{inference_split}_labels.npy'))
     print("Number of labels: ", len(labels))
     print("Each label shape: ", labels[0].shape)
     
@@ -101,7 +101,6 @@ def generate(output_directory,
     for i, label in enumerate(chunks):
         # if i!=len(chunks)-1:
         #     continue
-        print(len(chunks))
         cond = torch.from_numpy(label).cuda().float()
 
         # inference
@@ -128,7 +127,7 @@ def generate(output_directory,
 
        
         outfile = f'{i}_samples.npy'
-        synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data")
+        synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_{ckpt_iter}_checkpoint")
         if not os.path.exists(synth_data_path):
             os.makedirs(synth_data_path)
         new_out = os.path.join(synth_data_path, outfile)
@@ -146,9 +145,9 @@ def generate(output_directory,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD_ECG_demographic_cond_interpolate_15_onehot_mimic_faster_inf.json',
+    parser.add_argument('-c', '--config', type=str, default='/home/claracao/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD_ECG_demographic_cond_interpolate_15_onehot_mimic_mel_loss_len1000.json',
                         help='JSON file for configuration')
-    parser.add_argument('-ckpt_iter', '--ckpt_iter', default=40000,
+    parser.add_argument('-ckpt_iter', '--ckpt_iter', default=100000,
                         help='Which checkpoint to use; assign a number or "max"')
     parser.add_argument('-n', '--num_samples', type=int, default=400,
                         help='Number of utterances to be generated')

@@ -36,6 +36,7 @@
         "segment_length":1000,
         "sampling_rate": 100,
         "finetune_dataset":"mimic_iv",
+        "loss_fn": "MSE",
         "data_path":"/home/shared/backup/ptbxl_data_sssd-ecg/condition_15_demographic"
     },
     "gen_config":{

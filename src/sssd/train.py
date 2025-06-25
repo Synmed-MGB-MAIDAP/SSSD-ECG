@@ -98,37 +98,42 @@ def train(output_directory,
         
     
     print("net device", next(net.parameters()).device)
-    # ptbxl
-    if trainset_config["finetune_dataset"] == "ptbxl_all":
-        data_ptbxl = np.load(os.path.join(data_path, 'ptbxl_train_data.npy'))
-        labels_ptbxl = np.load(os.path.join(label_path, 'ptbxl_train_labels.npy'))   
-        
-        train_data = []
-        for i in range(len(data_ptbxl)):
-            train_data.append([data_ptbxl[i], labels_ptbxl[i]])
-        
-        trainloader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=6, drop_last=True)
 
-        # Load validate data
-        val_data_ptbxl = np.load(os.path.join(data_path, 'ptbxl_val_data.npy'))
-        val_labels_ptbxl = np.load(os.path.join(label_path, 'ptbxl_val_labels.npy'))
-
-        val_data = []
-        for i in range(len(val_data_ptbxl)):
-            val_data.append([val_data_ptbxl[i], val_labels_ptbxl[i]])
-
-        valloader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=6, drop_last=False)
+    # load ptbxl or mimic_iv dataset from npy files
+    train_data_temp = np.load(os.path.join(data_path, f'{trainset_config["finetune_dataset"]}_train_data.npy'))
+    train_labels = np.load(os.path.join(label_path, f'{trainset_config["finetune_dataset"]}_train_labels.npy'))   
     
-    elif trainset_config["finetune_dataset"] == "mimic_iv":
-        print("Loading MIMIC-IV dataset")
-        train_data = MIMIC_IV_ECG_Dataset(dataset_path=trainset_config['data_path'], usage='train', resample_length=1024)
-        val_data = MIMIC_IV_ECG_Dataset(dataset_path=trainset_config['data_path'], usage='val', resample_length=1024, max_samples=10000)
-        print("Train data size: ", len(train_data))
-        print("Validation data size: ", len(val_data))
-        train_data = categorize_demographics(train_data)
-        val_data = categorize_demographics(val_data)
-        trainloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
-        valloader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False)
+    train_data = []
+    for i in range(len(train_data_temp)):
+        train_data.append([train_data_temp[i], train_labels[i]])
+    
+    trainloader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=batch_size, drop_last=True)
+    print("Loaded training data from ", os.path.join(data_path, f'{trainset_config["finetune_dataset"]}_train_data.npy'))
+
+    # Load validate data
+    val_data_temp = np.load(os.path.join(data_path, f'{trainset_config["finetune_dataset"]}_val_data.npy'))
+    val_labels = np.load(os.path.join(label_path, f'{trainset_config["finetune_dataset"]}_val_labels.npy'))
+
+    val_data = []
+    for i in range(len(val_data_temp)):
+        val_data.append([val_data_temp[i], val_labels[i]])
+
+    valloader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, drop_last=False)
+    print("Loaded validation data from ", os.path.join(data_path, f'{trainset_config["finetune_dataset"]}_val_data.npy'))
+
+    # If load from MIMIC-IV ECG dataset from scratch, use below code
+
+    # print("Loading MIMIC-IV dataset")
+    # original_data_path = "/home/shared/backup/mmic_iv_ecg/files/mimic-iv-ecg/1.0"
+    # train_data = MIMIC_IV_ECG_Dataset(dataset_path=original_data_path, usage='train', resample_length=1000)
+    # val_data = MIMIC_IV_ECG_Dataset(dataset_path=original_data_path, usage='val', resample_length=1000, max_samples=10000)
+    # print("Train data size: ", len(train_data))
+    # print("Validation data size: ", len(val_data))
+    # train_data = categorize_demographics(train_data)
+    # val_data = categorize_demographics(val_data)
+
+    # trainloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
+    # valloader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False)
     
     index_8 = torch.tensor([0,2,3,4,5,6,7,11])
     index_4 = torch.tensor([1,8,9,10])
@@ -150,14 +155,13 @@ def train(output_directory,
             
             audio = torch.index_select(audio, 1, index_8).float().cuda()
             label = label.float().cuda()
-            # print("print out shapes", audio.shape, label.shape)
             
             # back-propagation
             optimizer.zero_grad()
             
             X = audio, label
             
-            loss = training_loss_label(net, "MSE", X, diffusion_hyperparams)
+            loss = training_loss_label(net, trainset_config['loss_fn'], X, diffusion_hyperparams)
             # wandb.log({'training loss': loss.item()})
             loss.backward()
             optimizer.step()
@@ -171,7 +175,7 @@ def train(output_directory,
                 wandb.log({"iteration": n_iter, "learning_rate": current_lr})
 
                 # --- EVALUATION STEP ---
-                val_loss = evaluate_model(net, valloader, index_8, diffusion_hyperparams)
+                val_loss = evaluate_model(net, valloader, index_8, diffusion_hyperparams, trainset_config['loss_fn'])
                 print(f"[VAL] iteration: {n_iter} \tval_loss: {val_loss}")
                 wandb.log({"iteration": n_iter, "val_loss": val_loss})
 
@@ -192,7 +196,7 @@ def train(output_directory,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond_interpolate_15_onehot_mimic_faster.json',
+    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond_interpolate_15_onehot_mimic_mel_loss_len1000.json',
                         help='JSON file for configuration')
 
     args = parser.parse_args()

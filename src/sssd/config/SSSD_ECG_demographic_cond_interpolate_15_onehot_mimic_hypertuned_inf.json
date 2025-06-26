@@ -23,7 +23,7 @@
         "class_split":[[72,86], [87, 92], [104, 103], [105, 110]]
     },
     "train_config": {
-        "data_path": "/home/shared/ptbxl_data_sssd-ecg/condition_15_demographic",
+        "data_path": "/home/shared/backup/mimic-iv-ecg/resampled_len_1000",
         "output_directory": "/home/shared/output_sssd-ecg/condition_mimic_15_lr_6e-4_bs16",
         "ckpt_iter": "max",
         "iters_per_ckpt": 5000,
@@ -36,7 +36,8 @@
         "segment_length":1000,
         "sampling_rate": 100,
         "finetune_dataset":"mimic_iv",
-        "data_path":"/home/shared/ptbxl_data_sssd-ecg/condition_15_demographic"
+        "loss_fn": "MSE",
+        "data_path":"/home/shared/backup/mimic-iv-ecg/resampled_len_1000"
     },
     "gen_config":{
         "output_directory": "/home/shared/output_sssd-ecg/condition_mimic_15_lr_6e-4_bs16",

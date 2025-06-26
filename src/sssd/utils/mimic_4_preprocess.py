@@ -110,7 +110,6 @@ class MIMIC_IV_ECG_Dataset(Dataset):
         self.mach_mea = pd.read_csv(os.path.join(self.dataset_path, 'machine_measurements.csv'), low_memory=False)
         self.sheet = pd.merge(self.record_list, self.mach_mea, how='inner', on=['subject_id', 'study_id'])
 
-        # "/home/claracao/exclude_list.pkl"
         with open('/home/shared/diffusets_output/exclude_list.pkl', 'rb') as f:
         # with open("/home/claracao/exclude_list.pkl", 'rb') as f:
             exclude_list = pickle.load(f)

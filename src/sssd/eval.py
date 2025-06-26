@@ -1,5 +1,6 @@
 import torch
 from utils.util import training_loss_label
+# from utils.metrics import MSE, RMSE, CorrelationCoefficient
 
 def evaluate_model(net, valloader, index_8, diffusion_hyperparams):
     net.eval()  # set model to evaluation mode
@@ -8,6 +9,7 @@ def evaluate_model(net, valloader, index_8, diffusion_hyperparams):
     count = 0
     
     with torch.no_grad():  # no gradient calculation
+        
         for audio, label in valloader:
             audio = torch.index_select(audio, 1, index_8).float().cuda()
             label = label.float().cuda()

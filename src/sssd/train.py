@@ -10,7 +10,7 @@ from eval import evaluate_model
 import wandb
 from utils.mimic_4_preprocess import MIMIC_IV_ECG_Dataset
 # from utils.demographics_mapping import categorize_demographics
-# from transformers import get_cosine_schedule_with_warmup
+from transformers import get_cosine_schedule_with_warmup, get_cosine_with_hard_restarts_schedule_with_warmup
 from inference import generate_four_leads
 # import random
 # import pdb
@@ -85,9 +85,18 @@ def train(output_directory,
 
     # scheduler = get_cosine_schedule_with_warmup(
     #     optimizer,
-    #     num_warmup_steps=int(n_iters/100),        # e.g., 1000 - 100000 iterations of warmup
+    #     num_warmup_steps=int(n_iters/100), # warmup for 1% of total iterations
     #     num_training_steps=n_iters  # total training iterations
     # )
+
+    scheduler_num_warmup_steps = int(n_iters / 100)  # warmup for 1% of total iterations
+    scheduler_num_cycles = np.ceil(n_iters / 10000)  # 10k steps in each cycle
+    scheduler = get_cosine_with_hard_restarts_schedule_with_warmup(
+        optimizer,
+        num_warmup_steps=scheduler_num_warmup_steps,
+        num_training_steps=n_iters,
+        num_cycles=scheduler_num_cycles,
+    )
 
     # load checkpoint
     print(f"[INFO] Loading checkpoint: ckpt_iter={ckpt_iter}")
@@ -184,14 +193,17 @@ def train(output_directory,
         )
         print("Train data size: ", len(train_data))
         print("Validation data size: ", len(val_data))
-        print("All validation data size: ", len(all_val_data))
         
         # train_data = categorize_demographics(train_data, include_text_embedding=include_text_embed)
         # val_data = categorize_demographics(val_data, include_text_embedding=include_text_embed)
         
         trainloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
         valloader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False)
-        all_valloader = torch.utils.data.DataLoader(all_val_data, batch_size=batch_size, shuffle=False)
+        if all_val_data is not None:
+            print("All validation data size: ", len(all_val_data))
+            all_valloader = torch.utils.data.DataLoader(all_val_data, batch_size=batch_size, shuffle=False)
+        else:
+            all_valloader = None
     else:
         print(f"[ERROR] Unknown finetune_dataset: {trainset_config['finetune_dataset']}")
         raise ValueError(f"Unknown finetune_dataset: {trainset_config['finetune_dataset']}")
@@ -200,6 +212,9 @@ def train(output_directory,
     index_4 = torch.tensor([1,8,9,10])
     
     print(f"[INFO] index_8: {index_8.tolist()}, index_4: {index_4.tolist()}")
+    
+    print(f"[INFO] Trainloader size: {len(trainloader)}")
+    print(f"[INFO] No. of epochs: {n_iters/len(trainloader)}")
     
     # Log hyperparameters (optional)
     wandb.config = {
@@ -212,6 +227,9 @@ def train(output_directory,
         "iters_per_logging": iters_per_logging,
         "include_text_embeddings": trainset_config.get("include_text_embeddings", 0)
         == 1,
+        "scheduler_num_warmup_steps": scheduler_num_warmup_steps,
+        "scheduler_num_cycles": scheduler_num_cycles,
+        "initial_lr": optimizer.param_groups[0]['lr'],
     }
     print(f"[INFO] wandb config: {wandb.config}")
     # training
@@ -231,18 +249,15 @@ def train(output_directory,
             X = audio, label
             
             loss = training_loss_label(net, "MSE", X, diffusion_hyperparams)
-            wandb.log({'training loss': loss.item(), 'iteration': n_iter}, step=n_iter)
+            wandb.log({'training loss': loss.item(), 'iteration': n_iter, "learning_rate": scheduler.get_last_lr()[0]}, step=n_iter)
             loss.backward()
             optimizer.step()
-            # scheduler.step()
+            scheduler.step()
 
             if n_iter % iters_per_logging == 0:
                 print("[LOGGING] iteration: {} \tloss: {}".format(n_iter, loss.item()))
                 wandb.log({"loss": loss.item()}, step=n_iter)
-
-                # current_lr = scheduler.get_last_lr()[0]
-                # wandb.log({"learning_rate": current_lr, "iteration": n_iter})
-                
+                                
                 # --- EVALUATION STEP ---
                 print("[EVAL] Evaluating model at iteration {}".format(n_iter))
                 val_loss = evaluate_model(net, valloader, index_8, diffusion_hyperparams)

@@ -33,33 +33,33 @@
         ]
     },
     "train_config": {
-        "data_path": "/home/shared/ptbxl_data_sssd-ecg/condition_all",
-        "output_directory": "/home/kumargirish/output_sssd-ecg/mimic_cn_sch_with_restart",
+        "data_path": "/home/kumargirish/data/ptbxl/processed/d_tog_15_cn",
+        "output_directory": "/home/kumargirish/output_sssd-ecg/ptbxl_cn_after_mimic_cn",
         "ckpt_iter": "max",
         "iters_per_ckpt": 5000,
         "iters_per_logging": 1000,
-        "n_iters": 200000,
-        "learning_rate": 1e-3,
-        "batch_size": 32
+        "n_iters": 300000,
+        "learning_rate": 5e-4,
+        "batch_size": 4
     },
     "trainset_config": {
         "segment_length": 1000,
         "sampling_rate": 100,
-        "finetune_dataset": "mimic_iv",
-        "data_path": "/home/kumargirish/data/mimic_files/1.0",
+        "finetune_dataset": "ptbxl_all",
+        "data_path": "/home/kumargirish/data/ptbxl",
         "include_text_embeddings": 1
     },
     "gen_config": {
-        "output_directory": "/home/kumargirish/output_sssd-ecg/mimic_cn_sch_with_restart",
-        "ckpt_path": "/home/kumargirish/output_sssd-ecg/mimic_cn_sch_with_restart",
+        "output_directory": "/home/kumargirish/output_sssd-ecg/ptbxl_cn_after_mimic_cn",
+        "ckpt_path": "/home/kumargirish/output_sssd-ecg/ptbxl_cn_after_mimic_cn",
         "inference_split": "test"
     },
     "viz_split_config": {
-        "use_ptbxl": "False",
+        "use_ptbxl": "True",
         "ptbxl_data_path": "/home/kumargirish/data/ptbxl/processed/d_tog_15_cn"
     },
     "project_config": {
         "project_name": "SSSD-MIMIC-IV-ECG",
-        "experiment_name": "mimic_cn_sch_with_restart"
+        "experiment_name": "ptbxl_cn_after_mimic_cn"
     }
 }

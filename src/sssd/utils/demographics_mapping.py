@@ -1,5 +1,8 @@
 import random
 import torch
+from tqdm.auto import tqdm
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 # common practive thresholds 91
 thresholds_15 = {
@@ -100,12 +103,14 @@ def map_heartrate(hr):
     
     return one_hot_vector
 
+
 def categorize_demographics(data):
     """
     Categorize demographics data into one-hot vectors.
     """
     new_data = []
-    for sample in data:
+    # for sample in data:
+    for sample in tqdm(data, desc="Categorizing demographics"):
         # print(sample)
         x, label_dict = sample
         x = torch.tensor(x).transpose(0, 1)
@@ -116,6 +121,8 @@ def categorize_demographics(data):
         label_vec = torch.cat((disease, age, gender, hr), dim=0)
         new_data.append([x, label_vec])
     return new_data
+
+
 
 if __name__ == "__main__":
     # Test the mapping functions

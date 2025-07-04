@@ -13,7 +13,7 @@
         "diffusion_step_embed_dim_in": 128,
         "diffusion_step_embed_dim_mid": 512,
         "diffusion_step_embed_dim_out": 512,
-        "s4_lmax": 1000,
+        "s4_lmax": 2000,
         "s4_d_state":64,
         "s4_dropout":0.0,
         "s4_bidirectional":1,
@@ -24,10 +24,10 @@
     },
     "train_config": {
         "data_path": "/home/shared/backup/ptbxl_data_sssd-ecg/condition_mimic_15",
-        "output_directory": "/home/zoeyhuang/output/output_sssd-ecg/condition_mimic_15_bs_30",
+        "output_directory": "/home/anamikumari/sssd-ecg-mimic4/output/output_sssd-ecg/condition_mimic_15_bs_30",
         "ckpt_iter": "max",
         "iters_per_ckpt": 5000,
-        "iters_per_logging": 30000,
+        "iters_per_logging": 15000,
         "n_iters": 150000,
         "learning_rate": 0.00075953,
         "batch_size":4
@@ -36,15 +36,19 @@
         "segment_length":1000,
         "sampling_rate": 100,
         "finetune_dataset":"mimic_iv",
-        "data_path":"/home/anamikumari/backup/mmic_iv_ecg/files/mimic-iv-ecg/1.0"
+        "data_path":"/home/shared/backup/mmic_iv_ecg/files/mimic-iv-ecg/1.0"
     },
     "gen_config":{
-        "output_directory": "/home/anamikumari/sssd-ecg-mimic4",
-        "ckpt_path": "/home/anamikumari/sssd-ecg-mimic4",
+        "output_directory": "/home/anamikumari/sssd-ecg-mimic4/output/output_sssd-ecg/condition_mimic_15_bs_30",
+        "ckpt_path": "/home/anamikumari/sssd-ecg-mimic4/output/condition_mimic_15_bs_30",
         "inference_split": "test"
     },
     "project_config": {
         "project_name": "MIMIC-IV-ECG",
-        "experiment_name": "condition_mimic_15_bs_30"
+        "experiment_name": "tuned_condition_mimic_15_bs_30"
+    },
+    "viz_split_config": {
+        "use_ptbxl": false,
+        "ptbxl_data_path": "/home/zoeyhuang/output/condition_15_demographic"
     }
 }

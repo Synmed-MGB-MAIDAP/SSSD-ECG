@@ -1,4 +1,4 @@
-{   
+{  
     "diffusion_config":{
         "T": 200,
         "beta_0": 0.0001,
@@ -7,44 +7,46 @@
     "wavenet_config": {
         "in_channels": 8,
         "out_channels":8,
-        "num_res_layers": 12,
+        "num_res_layers": 36,
         "res_channels": 256,
         "skip_channels": 256,
         "diffusion_step_embed_dim_in": 128,
         "diffusion_step_embed_dim_mid": 512,
         "diffusion_step_embed_dim_out": 512,
-        "s4_lmax": 1000,
+        "s4_lmax": 2000,
         "s4_d_state":64,
         "s4_dropout":0.0,
         "s4_bidirectional":1,
         "s4_layernorm":1,
         "label_embed_dims":[32, 32, 32, 32],
         "label_embed_classes":29,
-        "class_split":[[0,14], [15, 20], [21, 22], [23, 28]]
+        "class_split":[[72,86], [87, 92], [104, 103], [105, 110]]
     },
     "train_config": {
-        "data_path": "/home/shared/backup/ptbxl_data_sssd-ecg/condition_mimic_15",
-        "output_directory": "/home/zoeyhuang/output/output_sssd-ecg/condition_mimic_15_bs_30",
+        "data_path": "/home/zoeyhuang/output/condition_15_demographic",
+        "output_directory": "/home/zoeyhuang/output/output_sssd-ecg/condition_mimic_15_bs_30_last",
         "ckpt_iter": "max",
-        "iters_per_ckpt": 5000,
-        "iters_per_logging": 30000,
-        "n_iters": 150000,
-        "learning_rate": 0.00075953,
-        "batch_size":4
+        "iters_per_ckpt": 1000,
+        "iters_per_logging": 1000,
+        "n_iters": 100000,
+        "learning_rate": 2e-4,
+        "batch_size":30
     },
     "trainset_config":{
         "segment_length":1000,
         "sampling_rate": 100,
         "finetune_dataset":"mimic_iv",
-        "data_path":"/home/anamikumari/backup/mmic_iv_ecg/files/mimic-iv-ecg/1.0"
+        "data_path":"/home/zoeyhuang/output/condition_15_demographic"
     },
     "gen_config":{
-        "output_directory": "/home/anamikumari/sssd-ecg-mimic4",
-        "ckpt_path": "/home/anamikumari/sssd-ecg-mimic4",
+        "output_directory": "/home/zoeyhuang/output/output_sssd-ecg/condition_mimic_15_bs_30",
+        "ckpt_path": "/home/zoeyhuang/output/output_sssd-ecg/condition_mimic_15_bs_30",
         "inference_split": "test"
     },
     "project_config": {
         "project_name": "MIMIC-IV-ECG",
-        "experiment_name": "condition_mimic_15_bs_30"
+        "experiment_name": "condition_mimic_15_bs_30_last"
     }
 }
+ 
+ 

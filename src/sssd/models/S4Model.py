@@ -77,8 +77,8 @@ try: # Try pykeops
                 'w = Vj(2)',
             ],
             reduction_op='Sum',
-            axis=1,
-            dtype='float32' if v.dtype == torch.cfloat else 'float64',
+            axis=1
+            # dtype='float32' if v.dtype == torch.cfloat else 'float64',
         )
 
         v, z, w = _broadcast_dims(v, z, w)

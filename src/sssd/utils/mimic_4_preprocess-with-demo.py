@@ -212,6 +212,13 @@ class MIMIC_IV_ECG_Dataset(Dataset):
         else:
             heart_rate = 60.0 / rr_interval
 
+        x = x.transpose(0, 1)
+        disease = encoded_label
+        age = torch.tensor(map_age(self.sheet.iloc[idx]['anchor_age']))
+        gender = torch.tensor(map_gender(self.sheet.iloc[idx]['gender']))
+        hr = torch.tensor(map_heartrate(heart_rate))
+        label_vec = torch.cat((disease, age, gender, hr), dim=0)
+
         label_dict = {
                 'text': text, 
                 'label':label,
@@ -219,11 +226,14 @@ class MIMIC_IV_ECG_Dataset(Dataset):
                 'subject_id': self.sheet.iloc[idx]['subject_id'], 
                 'hr': heart_rate, 
                 'age': self.sheet.iloc[idx]['anchor_age'],
-                'gender': self.sheet.iloc[idx]['gender']
+                'gender': self.sheet.iloc[idx]['gender'],
+                'label_vec': label_vec,
                 # 'note_id': self.sheet.iloc[idx]['note_id'], 
                 }
+
+
         # x: (L, C)
-        return x, label_dict
+        return [x, label_vec]
 
     def __len__(self) -> int:
         return len(self.sheet)
@@ -235,9 +245,9 @@ if __name__ == '__main__':
     data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='test', resample_length=1024, max_samples=100)
     train_data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='train', resample_length=1024)
     val_data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='val', resample_length=1024, max_samples=100)
-    new_data = categorize_demographics(train_data)
+    # new_data = categorize_demographics(train_data)
     print(new_data[0])
-    dataloader = DataLoader(new_data, batch_size=2, shuffle=True)
+    dataloader = DataLoader(data, batch_size=2, shuffle=True)
     print(len(dataloader))
 
     for sample in dataloader:

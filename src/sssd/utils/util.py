@@ -5,7 +5,7 @@ import torch
 import random
 from wavetools.core import ECGSignal
 from wavetools.metrics.spectral import  MelSpectrogramLoss
-
+import matplotlib.pyplot as plt
 from wavetools.core.ecg_signal import ECGSignal
 
 def flatten(v):
@@ -204,4 +204,50 @@ def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
         loss = mse_loss_fn(epsilon_theta, z)
     
     return loss
+
+def plot_ecg_comparison(real_data, synth_data, label, lead_names=None, return_fig=False):
+    """
+    Plots side-by-side ECG comparisons for real and synthetic data.
+
+    Parameters:
+    - real_data: np.array or list, shape (12, time_points), Real ECG signal data.
+    - synth_data: np.array or list, shape (12, time_points), Synthetic ECG signal data.
+    - label: str, title of the plot.
+    - lead_names: list of str (optional), names of the 12 leads.
+    - return_fig: bool, if True returns the matplotlib figure object instead of saving.
+    """
+    if lead_names is None:
+        lead_names = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
+
+    fig, axes = plt.subplots(12, 2, figsize=(25, 15), sharex=True, sharey=True)
+    n = min(len(real_data), axes.shape[0])
+    for i in range(12):
+        # Plot real_data on the left
+        axes[i, 0].plot(real_data[i])
+        axes[i, 0].set_ylabel(lead_names[i], fontsize=10, fontweight='bold')
+        axes[i, 0].set_yticks([])  # Remove y-axis ticks for clarity
+        axes[i, 0].set_xticks([]) if i < 11 else axes[i, 0].set_xlabel("Time (ms)")
+
+        # Plot synth_data on the right
+        axes[i, 1].plot(synth_data[i])
+        axes[i, 1].set_yticks([])  # Remove y-axis ticks
+        axes[i, 1].set_xticks([]) if i < 11 else axes[i, 1].set_xlabel("Time (ms)")
+
+    # Titles for columns
+    axes[0, 0].set_title("Real Data", fontsize=12, fontweight='bold')
+    axes[0, 1].set_title("Synthetic Data", fontsize=12, fontweight='bold')
+
+    # Add main title
+    plt.suptitle(label, fontsize=14, fontweight='bold')
+    plt.tight_layout(rect=[0, 0, 1, 0.98])  # Adjust layout to fit title
+
+    if return_fig:
+        return fig
+    else:
+        # Save the figure to file
+        save_dir = "output/label_15"
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        plt.savefig(f"{save_dir}/ecg_comparison_{label}.png", bbox_inches='tight', dpi=300)
+        plt.close(fig)
 

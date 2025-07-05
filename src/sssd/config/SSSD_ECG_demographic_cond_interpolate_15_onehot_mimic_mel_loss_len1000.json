@@ -18,33 +18,34 @@
         "s4_dropout":0.0,
         "s4_bidirectional":1,
         "s4_layernorm":1,
-        "label_embed_dim":128,
-        "label_embed_classes":71
+        "label_embed_dims":[32, 32, 32, 32],
+        "label_embed_classes":29,
+        "class_split":[[0,14], [15, 20], [21, 22], [23, 28]]
     },
     "train_config": {
-        "data_path": "/home/shared/ptbxl_data_sssd-ecg",
-        "output_directory": "/home/shared/output_sssd-ecg",
+        "data_path": "/home/shared/backup/mimic-iv-ecg/resampled_len_1000",
+        "output_directory": "/home/claracao/output_sssd-ecg/condition_15_demographic_mel_loss_len1000",
         "ckpt_iter": "max",
         "iters_per_ckpt": 4000,
-        "iters_per_logging": 100,
-        "n_iters": 100000,
+        "iters_per_logging": 500,
+        "n_iters": 200000,
         "learning_rate": 2e-4,
         "batch_size":8
     },
     "trainset_config":{
         "segment_length":1000,
         "sampling_rate": 100,
-        "finetune_dataset":"ptbxl",
-        "loss_fn": "MSE",
-        "data_path":"/home/shared/ptbxl_data_sssd-ecg"
+        "finetune_dataset":"mimic_iv",
+        "loss_fn": "mel_loss",
+        "data_path":"/home/shared/backup/mimic-iv-ecg/resampled_len_1000"
     },
     "gen_config":{
-        "output_directory": "/home/shared/output_sssd-ecg",
-        "ckpt_path": "/home/shared/output_sssd-ecg",
+        "output_directory": "/home/claracao/output_sssd-ecg/condition_15_demographic_mel_loss_len1000",
+        "ckpt_path": "/home/claracao/output_sssd-ecg/condition_15_demographic_mel_loss_len1000",
         "inference_split": "test"
     },
     "project_config": {
-        "project_name": "SSSD-ECG",
-        "experiment_name": "reproduce"
+        "project_name": "MIMIC-IV-ECG",
+        "experiment_name": "condition_15_demographic_mel_loss_len1000"
     }
 }

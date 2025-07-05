@@ -125,30 +125,34 @@ def train(output_directory,
         
     
     print("net device", next(net.parameters()).device)
-    # ptbxl
     print(f"[INFO] trainset_config: {trainset_config}")
-    if trainset_config["finetune_dataset"] == "ptbxl_all":
-        print("[INFO] Loading PTBXL dataset...")
-        data_ptbxl = np.load(os.path.join(data_path, 'ptbxl_train_data.npy'))
-        labels_ptbxl = np.load(os.path.join(label_path, 'ptbxl_train_labels.npy'))   
-        print(f"[INFO] PTBXL train data shape: {data_ptbxl.shape}, labels shape: {labels_ptbxl.shape}")
+    if "ptbxl" or "mimic_iv" in trainset_config["finetune_dataset"]:
+
+        # load ptbxl or mimic_iv dataset from npy files
+        print(f"[INFO] Loading {trainset_config['finetune_dataset']} dataset")
+
+        train_data_temp = np.load(os.path.join(data_path, f'{trainset_config["finetune_dataset"]}_train_data.npy'))
+        train_labels = np.load(os.path.join(label_path, f'{trainset_config["finetune_dataset"]}_train_labels.npy'))
+        print("Loaded training data from ", os.path.join(data_path, f'{trainset_config["finetune_dataset"]}_train_data.npy'))
+        print(f"[INFO] train data shape: {train_data_temp.shape}, train labels shape: {train_labels.shape}")
         
         train_data = []
-        for i in range(len(data_ptbxl)):
-            train_data.append([data_ptbxl[i], labels_ptbxl[i]])
-        print(f"[INFO] PTBXL train_data loaded: {len(train_data)} samples")
+        for i in range(len(train_data_temp)):
+            train_data.append([train_data_temp[i], train_labels[i]])
+        print(f"[INFO] train_data loaded: {len(train_data)} samples")
         
         trainloader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=batch_size, drop_last=True)
 
         # Load validate data
-        val_data_ptbxl = np.load(os.path.join(data_path, 'ptbxl_val_data.npy'))
-        val_labels_ptbxl = np.load(os.path.join(label_path, 'ptbxl_val_labels.npy'))
-        print(f"[INFO] PTBXL val data shape: {val_data_ptbxl.shape}, labels shape: {val_labels_ptbxl.shape}")
+        val_data_temp = np.load(os.path.join(data_path, f'{trainset_config["finetune_dataset"]}_val_data.npy'))
+        val_labels = np.load(os.path.join(label_path, f'{trainset_config["finetune_dataset"]}_val_labels.npy'))
+        print("Loaded validation data from ", os.path.join(data_path, f'{trainset_config["finetune_dataset"]}_val_data.npy'))
+        print(f"[INFO] val data shape: {val_data_temp.shape}, val labels shape: {val_labels.shape}")
 
         val_data = []
-        for i in range(len(val_data_ptbxl)):
-            val_data.append([val_data_ptbxl[i], val_labels_ptbxl[i]])
-        print(f"[INFO] PTBXL val_data loaded: {len(val_data)} samples")
+        for i in range(len(val_data_temp)):
+            val_data.append([val_data_temp[i], val_labels[i]])
+        print(f"[INFO] val_data loaded: {len(val_data)} samples")
 
         valloader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, drop_last=False)
     
@@ -165,8 +169,7 @@ def train(output_directory,
         valloader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False)
     else:
         print(f"[ERROR] Unknown finetune_dataset: {trainset_config['finetune_dataset']}")
-        raise ValueError(f"Unknown finetune_dataset: {trainset_config['finetune_dataset']}")
-    
+        raise ValueError(f"Unknown finetune_dataset: {trainset_config['finetune_dataset']}")    
     index_8 = torch.tensor([0,2,3,4,5,6,7,11])
     index_4 = torch.tensor([1,8,9,10])
     
@@ -191,14 +194,13 @@ def train(output_directory,
         for audio, label in trainloader:
             audio = torch.index_select(audio, 1, index_8).float().cuda()
             label = label.float().cuda()
-            # print("print out shapes", audio.shape, label.shape)
             
             # back-propagation
             optimizer.zero_grad()
             
             X = audio, label
             
-            loss = training_loss_label(net, "MSE", X, diffusion_hyperparams)
+            loss = training_loss_label(net, trainset_config['loss_fn'], X, diffusion_hyperparams)
             wandb.log({'training loss': loss.item(), 'iteration': n_iter})
             loss.backward()
             optimizer.step()

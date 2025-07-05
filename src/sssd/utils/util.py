@@ -206,7 +206,6 @@ def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
     
     return loss
 
-
 def plot_ecg_comparison(real_data, synth_data, label, lead_names=None, return_fig=False):
     """
     Plots side-by-side ECG comparisons for real and synthetic data.
@@ -253,4 +252,3 @@ def plot_ecg_comparison(real_data, synth_data, label, lead_names=None, return_fi
         print(f"Saving figure to {save_dir}/ecg_comparison_{label}.png")
         plt.savefig(f"{save_dir}/ecg_comparison_{label}.png", bbox_inches='tight', dpi=300)
         plt.close(fig)
-

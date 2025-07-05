@@ -1,7 +1,7 @@
 import torch
 from utils.util import training_loss_label
 
-def evaluate_model(net, valloader, index_8, diffusion_hyperparams):
+def evaluate_model(net, valloader, index_8, diffusion_hyperparams, loss_fn):
     net.eval()  # set model to evaluation mode
     
     total_loss = 0.0
@@ -13,7 +13,7 @@ def evaluate_model(net, valloader, index_8, diffusion_hyperparams):
             label = label.float().cuda()
             
             X = audio, label
-            loss = training_loss_label(net, "MSE", X, diffusion_hyperparams)
+            loss = training_loss_label(net, loss_fn, X, diffusion_hyperparams)
             total_loss += loss.item()
             count += 1
     

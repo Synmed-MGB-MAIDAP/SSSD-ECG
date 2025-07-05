@@ -121,8 +121,8 @@ class MIMIC_IV_ECG_Dataset(Dataset):
         self.mach_mea = pd.read_csv(os.path.join(self.dataset_path, 'machine_measurements.csv'), low_memory=False)
         self.sheet = pd.merge(self.record_list, self.mach_mea, how='inner', on=['subject_id', 'study_id'])
 
-        # "home/claracao/exclude_list.pkl"
         with open('/home/shared/diffusets_output/exclude_list.pkl', 'rb') as f:
+        # with open("/home/claracao/exclude_list.pkl", 'rb') as f:
             exclude_list = pickle.load(f)
 
         self.sheet.drop(exclude_list, inplace=True)
@@ -304,16 +304,28 @@ class MIMIC_IV_ECG_Dataset(Dataset):
 if __name__ == '__main__':
     # Original dataset
     dataset_path = '/home/shared/backup/mmic_iv_ecg/files/mimic-iv-ecg/1.0'
-    data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='test', resample_length=1024, max_samples=100)
-    train_data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='train', resample_length=1024, max_samples=100)
-    val_data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='val', resample_length=1024, max_samples=100)
-    new_data = categorize_demographics(data)
-    print(new_data[0])
-    dataloader = DataLoader(new_data, batch_size=2, shuffle=True)
-    print(len(dataloader))
+    train_data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='train', resample_length=1000)
+    val_data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='val', resample_length=1000)
+    test_data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='test', resample_length=1000)
 
-    for sample in dataloader:
-        x, label_vec = sample
-        print(x.shape, label_vec.shape)
-        print(sample)
-        break
+    train_data = categorize_demographics(train_data)
+    val_data = categorize_demographics(val_data)
+    test_data = categorize_demographics(test_data)
+
+    #save data to npy file
+    data_path = '/home/shared/backup/mimic-iv-ecg/resampled_len_1000/data'
+    label_path = '/home/shared/backup/mimic-iv-ecg/resampled_len_1000/labels'
+    if not os.path.exists(data_path):
+        os.makedirs(data_path)
+
+    if not os.path.exists(label_path):
+        os.makedirs(label_path)
+    np.save(os.path.join(data_path, 'mimic_iv_train_data.npy'), np.array([x[0] for x in train_data]))
+    np.save(os.path.join(data_path, 'mimic_iv_val_data.npy'), np.array([x[0] for x in val_data]))
+    np.save(os.path.join(data_path, 'mimic_iv_test_data.npy'), np.array([x[0] for x in test_data]))
+    
+    np.save(os.path.join(label_path, 'mimic_iv_train_labels.npy'), np.array([x[1] for x in train_data]))
+    np.save(os.path.join(label_path, 'mimic_iv_val_labels.npy'), np.array([x[1] for x in val_data]))
+    np.save(os.path.join(label_path, 'mimic_iv_test_labels.npy'), np.array([x[1] for x in test_data]))
+
+

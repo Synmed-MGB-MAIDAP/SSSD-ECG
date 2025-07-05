@@ -39,7 +39,8 @@ def plot_signal_pairs(real_signals, generated_signals, save_dir, chunk_idx, num_
     
     # Get the first num_samples indices
     indices = range(min(len(real_signals), num_samples))
-    
+    time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    print("Plotting time: ", time_str)
     for idx in indices:
         real = real_signals[idx]
         gen = generated_signals[idx]
@@ -53,7 +54,7 @@ def plot_signal_pairs(real_signals, generated_signals, save_dir, chunk_idx, num_
         )
         
         # Save the plot
-        plt.savefig(os.path.join(save_dir, f'chunk{chunk_idx}_sample{idx}_8lead.png'))
+        plt.savefig(os.path.join(save_dir, f'chunk{chunk_idx}_sample{idx}_8lead_{time_str}.png'))
         plt.close(fig)
         
         # Plot 12-lead comparison
@@ -67,7 +68,7 @@ def plot_signal_pairs(real_signals, generated_signals, save_dir, chunk_idx, num_
         axes[-1].set_xlabel('Time')
         axes[0].legend()
         plt.tight_layout()
-        plt.savefig(os.path.join(save_dir, f'chunk{chunk_idx}_sample{idx}_12lead.png'))
+        plt.savefig(os.path.join(save_dir, f'chunk{chunk_idx}_sample{idx}_12lead_{time_str}.png'))
         plt.close(fig)
 
 
@@ -77,7 +78,8 @@ def generate(output_directory,
              data_path,
              ckpt_iter,
              experiment_name,
-             inference_split="test"):
+             inference_split="test",
+             seed=0):
     
     """
     Generate data based on ground truth 
@@ -90,10 +92,19 @@ def generate(output_directory,
                                       automitically selects the maximum iteration if 'max' is selected
     data_path (str):                  path to dataset, numpy array.
     """
-    output_directory = "/home/zoeyhuang/output/test_checkpoints"
-    ckpt_path = "/home/zoeyhuang/output/test_checkpoints"
-    experiment_name = "SSSD_ECG_MIMIC_IV"
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    torch.cuda.manual_seed(seed)
+    random.seed(seed)
+
+
+    output_directory = "/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16/condition_mimic_15_lr_6e-4_bs16_eval_mimic_2/ch256_T200_betaT0.02/val_during_train_data0"
+    # ckpt_path = "/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16/condition_mimic_15_lr_6e-4_bs16_eval_mimic_2/ch256_T200_betaT0.02/val_during_train_data0"
+    ckpt_path = '/home/zoeyhuang/output/test_checkpoints/SSSD_ECG_MIMIC_IV'
+    experiment_name = ""
     inference_split = "val"
+    # trainset_config["finetune_dataset"] = "ptbxl_all"
+    chunks_size = 400  # Number of samples per chunk
     print("num_samples: ", num_samples)
 
     # Initialize wandb for visualization
@@ -124,10 +135,15 @@ def generate(output_directory,
     ckpt_path = os.path.join(ckpt_path, local_path)
     if ckpt_iter == 'max':
         ckpt_iter = find_max_epoch(ckpt_path)
-    model_path = os.path.join(ckpt_path, '{}.pkl'.format(ckpt_iter))
+    #model_path = os.path.join(ckpt_path, '{}.pkl'.format(ckpt_iter))
+    #model_path = os.path.join(ckpt_path, 'sssd_ecg_model.pth')
+    model_path = os.path.join(ckpt_path, '100000.pkl')
+    # pdb.set_trace()
+
     try:
         print('Loading model from %s' % model_path)
         checkpoint = torch.load(model_path, map_location='cpu')
+        #net.load_state_dict(checkpoint)
         net.load_state_dict(checkpoint['model_state_dict'])
         print('Successfully loaded model at iteration {}'.format(ckpt_iter))
     except:
@@ -152,11 +168,11 @@ def generate(output_directory,
         print("Number of samples: ", len(labels))
         print("Each label shape: ", labels[0].shape)
         
-        # break down labels into chunks of 400
+        # break down labels into chunks
         chunks = []
-        for i in range(0, len(labels), 400):
-            if i + 400 <= len(labels):
-                chunks.append(labels[i:i+400])
+        for i in range(0, len(labels), chunks_sizes):
+            if i + chunks_size <= len(labels):
+                chunks.append(labels[i:i+chunks_size])
             else:
                 chunks.append(labels[i:])
         
@@ -184,11 +200,11 @@ def generate(output_directory,
         print("Number of samples: ", len(labels))
         print("Each label shape: ", labels[0].shape)
         
-        # break down labels into chunks of 400
+        # break down labels into chunks
         chunks = []
-        for i in range(0, len(labels), 400):
-            if i + 400 <= len(labels):
-                chunks.append(labels[i:i+400])
+        for i in range(0, len(labels), chunks_size):
+            if i + chunks_size <= len(labels):
+                chunks.append(labels[i:i+chunks_size])
             else:
                 chunks.append(labels[i:])
         
@@ -214,17 +230,28 @@ def generate(output_directory,
         end = torch.cuda.Event(enable_timing=True)
         start.record()
 
-        m_limit = min(num_samples, len(cond))
-        cond = cond[:m_limit, :]
-        real_audio = real_data[i*num_samples:i*num_samples+m_limit, :]
-        # cond = cond[:num_samples, :]
-        # real_audio = real_data[i*num_samples:(i+1)*num_samples, :]
-        real_audio = torch.index_select(torch.from_numpy(real_audio), 1, index_8).float().cuda()
+        # Get corresponding real data for this chunk
+        start_idx = i * chunks_size
+        end_idx = min(start_idx + num_samples, len(real_data))
+        chunk_real_data = real_data[start_idx:end_idx,:]
+        cond = cond[:num_samples, :]
+
+        real_audio = torch.from_numpy(chunk_real_data).float()
+        real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
         
         print(f"Generating {num_samples} samples for chunk {i}")
+
+        # sanity check
+        real_audio = np.load("/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16/condition_mimic_15_lr_6e-4_bs16_eval_mimic_2/ch256_T200_betaT0.02/val_during_train_data0/real_audio_0_0.npy")
+        real_audio = torch.from_numpy(real_audio).float()
+        real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
+        cond = np.load("/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16/condition_mimic_15_lr_6e-4_bs16_eval_mimic_2/ch256_T200_betaT0.02/val_during_train_data0/real_label_0_0.npy")
+        cond = torch.from_numpy(cond).float()
+        # print("real_audio shape: ", real_audio8.shape)
+        # print("cond shape: ", cond.shape)
         pdb.set_trace()
         # Generate with the appropriate signal length
-        generated_audio = sampling_label(net, (num_samples, 8, signal_length), 
+        generated_audio = sampling_label(net, real_audio8.shape, 
                                diffusion_hyperparams,
                                cond=cond)
         
@@ -234,19 +261,14 @@ def generate(output_directory,
         end.record()
         torch.cuda.synchronize()
         print(f'Generated {num_samples} samples in {int(start.elapsed_time(end)/1000)} seconds')
-
-        # Get corresponding real data for this chunk
-        start_idx = i * 400
-        end_idx = min(start_idx + 400, len(real_data))
-        chunk_real_data = real_data[start_idx:end_idx]
         
         # Plot intermediate results
         plot_signal_pairs(
-            chunk_real_data,
+            real_audio.detach().cpu().numpy(),
             generated_audio12.detach().cpu().numpy(),
             plot_dir,
             i,
-            num_samples=num_samples  # Plot 5 random samples per chunk
+            num_samples=len(real_audio)  # Plot 5 random samples per chunk
         )
         
         # Log some samples to wandb
@@ -321,7 +343,7 @@ if __name__ == "__main__":
                         help='JSON file for configuration')
     parser.add_argument('-ckpt_iter', '--ckpt_iter', default=10000,
                         help='Which checkpoint to use; assign a number or "max"')
-    parser.add_argument('-n', '--num_samples', type=int, default=4,
+    parser.add_argument('-n', '--num_samples', type=int, default=50,
                         help='Number of utterances to be generated')
     args = parser.parse_args()
 
@@ -343,8 +365,10 @@ if __name__ == "__main__":
     model_config = config['wavenet_config']
     experiment_name = config['project_config']['experiment_name']
     
+    seed=0
     generate(**gen_config,
             ckpt_iter=args.ckpt_iter,
             num_samples=args.num_samples,
             experiment_name=experiment_name,
-            data_path=trainset_config["data_path"])
+            data_path=trainset_config["data_path"],
+            seed=seed)

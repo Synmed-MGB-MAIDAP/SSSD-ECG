@@ -1,5 +1,4 @@
 import os
-
 import torch
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
@@ -11,6 +10,8 @@ import wfdb
 from wfdb import processing
 from utils.demographics_mapping import map_age, map_gender, map_heartrate, categorize_demographics
 import pickle
+import pdb
+import random
 
 def create_encoding_vector(input_list):
     # encoding order
@@ -97,10 +98,20 @@ class MIMIC_IV_ECG_Dataset(Dataset):
                  test_fold: int=None, 
                  seed: int=42, 
                  resample_length: int=1024,
-                 max_samples: int = None):
+                 max_samples: int = None,
+                 augment: bool = False,
+                 augment_prob: float = 0.5):
 
         self.resample_length = resample_length
         self.dataset_path = dataset_path
+        self.augment = augment
+        self.augment_prob = augment_prob
+        
+        # Set random seed for reproducibility
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
+            torch.manual_seed(seed)
 
         # Use all data
         self.record_list = pd.read_csv(os.path.join(self.dataset_path, 'record_list.csv'), low_memory=False)
@@ -131,8 +142,6 @@ class MIMIC_IV_ECG_Dataset(Dataset):
 
         self.sheet = pd.merge(self.sheet, self.patient_table, how='inner', on=['subject_id', 'subject_id'])
 
-        print("number of folds", len(self.sheet))
-        print("number of folds", num_folds)
         # 0-17 train, 18 val, 19 test
         # split train and test data
         if usage in ['train', 'val', 'test']:
@@ -155,19 +164,74 @@ class MIMIC_IV_ECG_Dataset(Dataset):
             # Add sampling if max_samples is set
             if max_samples is not None and len(self.sheet) > max_samples:
                 self.sheet = self.sheet.sample(n=max_samples, random_state=seed).reset_index(drop=True)
+            # pdb.set_trace()
+            print(f"final sheet length and fold for {usage}:", len(self.sheet), self.sheet['fold'])
     
+    def _add_gaussian_noise(self, x: torch.Tensor, mean: float = 0.0, std: float = 0.01) -> torch.Tensor:
+        """Add Gaussian noise to the signal."""
+        noise = torch.randn_like(x) * std + mean
+        return x + noise
+
+    def _time_warp(self, x: torch.Tensor, sigma: float = 0.2) -> torch.Tensor:
+        """Apply time warping to the signal."""
+        orig_steps = np.arange(x.shape[0])
+        random_warps = np.random.normal(loc=1.0, scale=sigma, size=(x.shape[0],))
+        warp_steps = (np.cumsum(random_warps))
+        warp_steps = warp_steps * (x.shape[0]-1) / warp_steps[-1]
+        ret = np.zeros_like(x)
+        for i, dim in enumerate(range(x.shape[1])):
+            ret[:, i] = np.interp(orig_steps, warp_steps, x[:, i].numpy())
+        return torch.from_numpy(ret)
+
+    def _scaling(self, x: torch.Tensor, sigma: float = 0.1) -> torch.Tensor:
+        """Apply random scaling to the signal."""
+        factor = np.random.normal(loc=1.0, scale=sigma, size=(x.shape[1],))
+        return x * torch.from_numpy(factor)
+
+    def _random_cutout(self, x: torch.Tensor, max_cutout_length: int = 100) -> torch.Tensor:
+        """Apply random cutout to the signal."""
+        length = np.random.randint(1, max_cutout_length)
+        start = np.random.randint(0, x.shape[0] - length)
+        x[start:start + length] = 0
+        return x
+
+    def _apply_augmentation(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply random augmentation to the signal."""
+        if not self.augment or random.random() > self.augment_prob:
+            return x
+
+        # Randomly choose augmentation methods
+        augmentations = [
+            self._add_gaussian_noise,
+            self._time_warp,
+            self._scaling,
+            self._random_cutout
+        ]
+        
+        # Apply 1-2 random augmentations
+        num_augs = random.randint(1, 2)
+        selected_augs = random.sample(augmentations, num_augs)
+        
+        for aug in selected_augs:
+            x = aug(x)
+            
+        return x
+
     # Preprocessing function for waveform data
     def _waveform_preprocess(self, x: np.ndarray):
         # x: (L=5000, C=12)
-
         x = np.nan_to_num(x)
+        
         # resample x to intended length
         if self.resample_length:
-            # x: (L, C) -> (resample_length, C)
-            # print(f"Resampling from {x.shape[0]} to {self.resample_length}")
             x = signal.resample(x, self.resample_length)
 
         x = torch.as_tensor(x, dtype=torch.float)
+        
+        # Apply augmentation if enabled
+        if self.augment:
+            x = self._apply_augmentation(x)
+            
         return x
     
     # Preprocessing function for text label

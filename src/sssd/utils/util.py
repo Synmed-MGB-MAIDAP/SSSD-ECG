@@ -247,9 +247,10 @@ def plot_ecg_comparison(real_data, synth_data, label, lead_names=None, return_fi
         return fig
     else:
         # Save the figure to file
-        save_dir = "output/label_15"
+        save_dir = "visuals/train2"
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
+        print(f"Saving figure to {save_dir}/ecg_comparison_{label}.png")
         plt.savefig(f"{save_dir}/ecg_comparison_{label}.png", bbox_inches='tight', dpi=300)
         plt.close(fig)
 

@@ -27,11 +27,10 @@
         "output_directory": "/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16",
         "ckpt_iter": "max",
         "iters_per_ckpt": 5000,
-        "iters_per_logging": 10,
-        "iters_per_test": 50000, 
-        "n_iters": 200000,
+        "iters_per_logging": 10000,
+        "n_iters": 150000,
         "learning_rate": 6e-4,
-        "batch_size":16
+        "batch_size":8
     },
     "trainset_config":{
         "segment_length":1000,
@@ -42,14 +41,10 @@
     "gen_config":{
         "output_directory": "/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16",
         "ckpt_path": "/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16",
-        "inference_split": "test"
+        "inference_split": "train"
     },
     "project_config": {
         "project_name": "MIMIC-IV-ECG",
         "experiment_name": "condition_mimic_15_lr_6e-4_bs16_eval_mimic"
-    },
-    "viz_split_config": {
-        "use_ptbxl": false,
-        "ptbxl_data_path": "/home/zoeyhuang/output/condition_15_demographic"
     }
 }

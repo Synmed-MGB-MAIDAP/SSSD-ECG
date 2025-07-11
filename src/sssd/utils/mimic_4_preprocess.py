@@ -1,4 +1,7 @@
 import os
+import ast
+import pickle
+
 import torch
 from torch.utils.data import Dataset
 
@@ -94,15 +97,37 @@ class MIMIC_IV_ECG_Dataset(Dataset):
         self,
         dataset_path: str = "/home/kumargirish/data/mimic_files/1.0",
         other_files_path: str = "/home/kumargirish/data/mimic_files/",
-        usage: str='all', 
-        num_folds: int=20, 
-        test_fold: int=None, 
-        seed: int=42, 
-        resample_length: int=1024,
+        usage: str = "all",
+        num_folds: int = 20,
+        test_fold: int = None,
+        seed: int = 42,
+        resample_length: int = 1024,
+        include_text_embeddings=False,
+        text_embedding_paths=None,
         max_samples: int = None,
         augment: bool = False,
-        augment_prob: float = 0.5
+        augment_prob: float = 0.5,
     ):
+
+        print("Creating MIMIC dataset.")
+
+        self.include_text_embeddings = include_text_embeddings
+        if include_text_embeddings:
+            if text_embedding_paths is None:
+                print("Using default embedding paths")
+                text_embedding_paths = [
+                    "/home/kumargirish/data/mimic_files/mimic_report_embeddings.csv",
+                    "/home/kumargirish/data/mimic_files/mimic_report_embeddings_II.csv",
+                ]
+
+            temp = []
+            for embd_path in text_embedding_paths:
+                temp.append(pd.read_csv(embd_path))
+            self.text_to_embed_mapping = pd.concat(temp, ignore_index=True)
+        else:
+            self.text_to_embed_mapping = None
+            
+        print(f"Text embedding mapping shape: {self.text_to_embed_mapping.shape}")
 
         self.resample_length = resample_length
         self.dataset_path = dataset_path
@@ -254,7 +279,45 @@ class MIMIC_IV_ECG_Dataset(Dataset):
             x = self._apply_augmentation(x)
             
         return x
-    
+
+    num = ["1st", "2nd", "3rd"]
+
+    def _prompt_propcess(self, text):
+        prompt_text = ""
+        c = 0
+        s = ""
+        for ch in text:
+            if ch == "|":
+                # prompt_text += 'The ' + (num[c] if c <= 2 else str(c) + 'th') + ' diagnosis is {' + s + '}. '
+                if c == 0:
+                    prompt_text += "Most importantly, the 1st diagnosis is {" + s + "}."
+                else:
+                    prompt_text += (
+                        "As a supplementary condition, the "
+                        + (self.num[c] if c <= 2 else str(c + 1) + "th")
+                        + " diagnosis is {"
+                        + s
+                        + "}."
+                    )
+                c += 1
+                s = ""
+            else:
+                s += ch
+        if s != "":
+            if c == 0:
+                prompt_text += "Most importantly, the 1st diagnosis is {" + s + "}."
+            else:
+                prompt_text += (
+                    "As a supplementary condition, the "
+                    + (self.num[c] if c <= 2 else str(c + 1) + "th")
+                    + " diagnosis is {"
+                    + s
+                    + "}."
+                )
+            c += 1
+            s = ""
+        return prompt_text
+
     # Preprocessing function for text label
     def _text_preprocess(self, texts: list):
         # texts: list of 18 reports, where blank is parsed as np.NaN
@@ -269,17 +332,23 @@ class MIMIC_IV_ECG_Dataset(Dataset):
         # a simple concat way 
         text_clean = '|'.join(text_clean)
 
-        return text_clean
+        text_to_embed = self._prompt_propcess(text_clean)
+        embedding = self.text_to_embed_mapping.loc[
+            self.text_to_embed_mapping["text"] == text_to_embed, "embedding"
+        ].values[0]
+        embedding = ast.literal_eval(embedding)
+        
+        return text_clean, embedding
 
     def __getitem__(self, idx: int):
-        item_path = os.path.join(self.dataset_path, self.sheet['path'].iloc[idx])
+        item_path = os.path.join(self.dataset_path, self.sheet["path"].iloc[idx])
 
         sig, fields = wfdb.rdsamp(item_path)
         x = self._waveform_preprocess(sig)
         new_freq = fields["fs"] * self.resample_length / 5000.0
 
-        texts = [self.sheet.iloc[idx][f'report_{x}'] for x in range(18)]
-        text = self._text_preprocess(texts)
+        texts = [self.sheet.iloc[idx][f"report_{x}"] for x in range(18)]
+        text, embedding = self._text_preprocess(texts)
         label = translate_text_to_label(text)
         encoded_label = create_encoding_vector(label)
 
@@ -306,16 +375,19 @@ class MIMIC_IV_ECG_Dataset(Dataset):
             heart_rate = 60.0 / rr_interval
 
         label_dict = {
-                'text': text, 
-                'label':label,
-                'encoded_label': encoded_label,
-                'subject_id': self.sheet.iloc[idx]['subject_id'], 
-                'hr': heart_rate, 
-                'age': self.sheet.iloc[idx]['anchor_age'],
-                'gender': self.sheet.iloc[idx]['gender']
-                # 'note_id': self.sheet.iloc[idx]['note_id'], 
-                }
-        # x: (L, C)
+            "text": text,
+            "label": label,
+            "encoded_label": encoded_label,
+            "subject_id": self.sheet.iloc[idx]["subject_id"],
+            "hr": heart_rate,
+            "age": self.sheet.iloc[idx]["anchor_age"],
+            "gender": self.sheet.iloc[idx]["gender"],
+            # 'note_id': self.sheet.iloc[idx]['note_id'],
+        }
+        
+        if self.include_text_embeddings:
+            label_dict["text_embedding"] = torch.tensor(embedding)
+        
         return x, label_dict
 
     def __len__(self) -> int:
@@ -348,5 +420,3 @@ if __name__ == '__main__':
     np.save(os.path.join(label_path, 'mimic_iv_train_labels.npy'), np.array([x[1] for x in train_data]))
     np.save(os.path.join(label_path, 'mimic_iv_val_labels.npy'), np.array([x[1] for x in val_data]))
     np.save(os.path.join(label_path, 'mimic_iv_test_labels.npy'), np.array([x[1] for x in test_data]))
-
-

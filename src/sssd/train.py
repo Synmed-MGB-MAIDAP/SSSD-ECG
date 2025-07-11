@@ -8,12 +8,8 @@ from models.SSSD_ECG import SSSD_ECG
 from utils.util import find_max_epoch, training_loss_label, calc_diffusion_hyperparams, sampling_label, plot_ecg_comparison
 from eval import evaluate_model
 import wandb
-from utils.mimic_4_preprocess import MIMIC_IV_ECG_Dataset
-from utils.demographics_mapping import categorize_demographics
-from transformers import get_cosine_schedule_with_warmup
+from transformers import get_cosine_schedule_with_warmup, get_cosine_with_hard_restarts_schedule_with_warmup
 from inference import generate_four_leads
-import random
-import pdb
 import sys
 import importlib
 import os
@@ -30,7 +26,9 @@ def train(output_directory,
          project_name,
          experiment_name,
          use_ptbxl,
-         ptbxl_data_path):
+         ptbxl_data_path,
+         scheduler_func=None
+    ):
   
     """
     Train Diffusion Models
@@ -82,17 +80,33 @@ def train(output_directory,
     net = SSSD_ECG(**model_config).cuda()
     total_params = sum(p.numel() for p in net.parameters())
     print(f"Total Parameters: {total_params:,}")
-    wandb.log({"total_params": total_params})
+    wandb.log({"total_params": total_params}, step=0)
     
     # define optimizer
     print(f"[INFO] Initializing Adam optimizer with learning rate: {learning_rate}")
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
 
-    # scheduler = get_cosine_schedule_with_warmup(
-    #     optimizer,
-    #     num_warmup_steps=int(n_iters/100),        # e.g., 1000 - 100000 iterations of warmup
-    #     num_training_steps=n_iters  # total training iterations
-    # )
+    if scheduler_func is not None:            
+        scheduler_num_warmup_steps = int(n_iters / 100)  # warmup for 1% of total iterations
+        scheduler_num_cycles = np.ceil(n_iters / 10000)  # 10k steps in each cycle
+        if scheduler_func == "cosine_warmup":
+            print(f"[INFO] Using cosine scheduler with {scheduler_num_warmup_steps} warmup steps.")
+            scheduler = get_cosine_schedule_with_warmup(
+                optimizer,
+                num_warmup_steps=scheduler_num_warmup_steps,
+                num_training_steps=n_iters  # total training iterations
+            )
+        elif scheduler_func == "cosine_warmup_restarts":
+            print(f"[INFO] Using cosine scheduler with hard restarts, {scheduler_num_warmup_steps} warmup steps, and {scheduler_num_cycles} cycles.")
+            scheduler = get_cosine_with_hard_restarts_schedule_with_warmup(
+                optimizer,
+                num_warmup_steps=scheduler_num_warmup_steps,
+                num_training_steps=n_iters,
+                num_cycles=scheduler_num_cycles,
+            )
+    else:
+        scheduler = None
+        print("[INFO] No scheduler function provided, using default optimizer without scheduling.")
 
     # load checkpoint
     print(f"[INFO] Loading checkpoint: ckpt_iter={ckpt_iter}")
@@ -113,15 +127,16 @@ def train(output_directory,
                 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
             print('Successfully loaded model at iteration {}'.format(ckpt_iter))
-            wandb.log({"checkpoint_loaded": ckpt_iter})
+            wandb.log({"checkpoint_loaded": ckpt_iter}, step=0)
+            
         except Exception as e:
             ckpt_iter = -1
             print(f'No valid checkpoint model found, start training from initialization try. Error: {e}')
-            wandb.log({"checkpoint_loaded": -1})
+            wandb.log({"checkpoint_loaded": -1}, step=0)
     else:
         ckpt_iter = -1
         print('No valid checkpoint model found, start training from initialization.')
-        wandb.log({"checkpoint_loaded": -1})
+        wandb.log({"checkpoint_loaded": -1}, step=0)
         
     
     print("net device", next(net.parameters()).device)
@@ -169,22 +184,36 @@ def train(output_directory,
         valloader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False)
     else:
         print(f"[ERROR] Unknown finetune_dataset: {trainset_config['finetune_dataset']}")
-        raise ValueError(f"Unknown finetune_dataset: {trainset_config['finetune_dataset']}")    
+        raise ValueError(f"Unknown finetune_dataset: {trainset_config['finetune_dataset']}")
+    
     index_8 = torch.tensor([0,2,3,4,5,6,7,11])
     index_4 = torch.tensor([1,8,9,10])
     
     print(f"[INFO] index_8: {index_8.tolist()}, index_4: {index_4.tolist()}")
     
+    print(f"[INFO] Trainloader size: {len(trainloader)}")
+    print(f"[INFO] No. of epochs: {n_iters/len(trainloader)}")
+    
     # Log hyperparameters (optional)
-    wandb.config = {
+    temp_config_to_log = {
         "learning_rate": optimizer.param_groups[0]["lr"],
-        "batch_size": trainloader.batch_size if hasattr(trainloader, 'batch_size') else 'Unknown',
+        "batch_size": (
+            trainloader.batch_size if hasattr(trainloader, "batch_size") else "Unknown"
+        ),
         "n_iters": n_iters,
         "iters_per_ckpt": iters_per_ckpt,
         "iters_per_test": iters_per_test,
         "iters_per_logging": iters_per_logging,
+        "initial_lr": optimizer.param_groups[0]['lr'],
     }
+    if scheduler is not None:
+        temp_config_to_log["scheduler_func"] = scheduler_func
+        temp_config_to_log["scheduler_num_warmup_steps"] = scheduler_num_warmup_steps
+        temp_config_to_log["scheduler_num_cycles"] = scheduler_num_cycles
+        
+    wandb.config = temp_config_to_log
     print(f"[INFO] wandb config: {wandb.config}")
+    
     # training
     n_iter = ckpt_iter + 1
     print(f"[INFO] Starting training loop from iteration {n_iter} to {n_iters}")
@@ -204,88 +233,86 @@ def train(output_directory,
             wandb.log({'training loss': loss.item(), 'iteration': n_iter})
             loss.backward()
             optimizer.step()
-            # scheduler.step()
-        
-        if n_iter % iters_per_logging == 0:
-        # if True:
-            print("[LOGGING] iteration: {} \tloss: {}".format(n_iter, loss.item()))
-            wandb.log({"iteration": n_iter, "loss": loss.item()})
-            # current_lr = scheduler.get_last_lr()[0]
-            # wandb.log({"learning_rate": current_lr, "iteration": n_iter})
-            # --- EVALUATION STEP ---
-            print("[EVAL] Evaluating model at iteration {}".format(n_iter))
-            val_loss = evaluate_model(net, valloader, index_8, diffusion_hyperparams)
-            print(f"[VAL] iteration: {n_iter} \tval_loss: {val_loss}")
-            wandb.log({"iteration": n_iter, "val_loss": val_loss})
-        
-        if n_iter % (iters_per_logging*10) == 0:
-            # --- ECG PLOTTING AND LOGGING ---
-            # Choose visualization data based on configuration
-            print(f"[VIZ] viz_split_config: {viz_split_config}")
-            if viz_split_config['use_ptbxl']:
-                print("[VIZ] Using PTBXL validation split for visualization.")
-                # Use PTBXL validation split regardless of training dataset
-                # Always load PTBXL validation data for visualization if needed
-                if trainset_config["finetune_dataset"] != "ptbxl_all":
-                    print(f"[VIZ] Loading PTBXL val data from {ptbxl_data_path}")
-                    ptbxl_val_data = np.load(os.path.join(ptbxl_data_path, 'data/ptbxl_val_data.npy'))
-                    ptbxl_val_labels = np.load(os.path.join(ptbxl_data_path, 'labels/ptbxl_val_labels.npy'))
-                    ptbxl_val_data_list = []
-                    for i in range(len(ptbxl_val_data)):
-                        ptbxl_val_data_list.append([ptbxl_val_data[i], ptbxl_val_labels[i]])
-                    ptbxl_valloader = torch.utils.data.DataLoader(ptbxl_val_data_list, shuffle=False, batch_size=6, drop_last=False)
-                    viz_batches = list(ptbxl_valloader)
+            if scheduler is not None:
+                scheduler.step()
+
+            if n_iter % iters_per_logging == 0:
+                print("[LOGGING] iteration: {} \tloss: {}".format(n_iter, loss.item()))
+                wandb.log({"loss": loss.item()}, step=n_iter)
+                                
+                # --- EVALUATION STEP ---
+                print("[EVAL] Evaluating model at iteration {}".format(n_iter))
+                val_loss = evaluate_model(net, valloader, index_8, diffusion_hyperparams, trainset_config['loss_fn'])
+                print(f"[VAL] iteration: {n_iter} \tval_loss: {val_loss}")
+                wandb.log({"val_loss": val_loss}, step=n_iter)                
+                
+                # --- ECG PLOTTING AND LOGGING ---
+                # Choose visualization data based on configuration
+                if bool(viz_split_config['use_ptbxl']):
+                    print("[VIZ] Using PTBXL validation split for visualization.")
+                    # Use PTBXL validation split regardless of training dataset
+                    # Always load PTBXL validation data for visualization if needed
+                    if trainset_config["finetune_dataset"] != "ptbxl_all":
+                        print(f"[VIZ] Loading PTBXL val data from {ptbxl_data_path}")
+                        ptbxl_val_data = np.load(os.path.join(ptbxl_data_path, 'data/ptbxl_val_data.npy'))
+                        ptbxl_val_labels = np.load(os.path.join(ptbxl_data_path, 'labels/ptbxl_val_labels.npy'))
+                        ptbxl_val_data_list = []
+                        for i in range(len(ptbxl_val_data)):
+                            ptbxl_val_data_list.append([ptbxl_val_data[i], ptbxl_val_labels[i]])
+                        ptbxl_valloader = torch.utils.data.DataLoader(ptbxl_val_data_list, shuffle=False, batch_size=batch_size, drop_last=False)
+                        viz_batches = list(ptbxl_valloader)
+                    else:
+                        viz_batches = list(valloader)
                 else:
+                    print("[VIZ] Using MIMIC-IV validation split for visualization.")
+                    # Use MIMIC-IV validation split
                     viz_batches = list(valloader)
-            else:
-                print("[VIZ] Using MIMIC-IV validation split for visualization.")
-                # Use MIMIC-IV validation split
-                viz_batches = list(valloader)
-            num_samples = min(10, len(viz_batches))
-            fixed_batches = viz_batches[:num_samples]
-            ecg_figs = []
-            for i, (real_audio, real_label) in enumerate(fixed_batches):
-                print(f"[VIZ] Generating ECG comparison for sample {i} at iteration {n_iter}")
-                # pdb.set_trace()
-                real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
-                real_label = real_label.float().cuda()
-                # Generate synthetic ECGs with the same label
-                synth_audio = sampling_label(
-                    net,
-                    real_audio8.shape,
-                    diffusion_hyperparams,
-                    cond=real_label
-                )
-                synth_audio_np = synth_audio.detach().cpu().numpy()
-                real_audio_np = real_audio.detach().cpu().numpy()
-                # Plot comparison for the first sample in the batch
-                synth_audio12 = generate_four_leads(synth_audio)
-                synth_audio12_np = synth_audio12.detach().cpu().numpy()
-                # pdb.set_trace()
-                # save all the parameters
-                save_dir = os.path.join(output_directory, "val_during_train_data{}".format(n_iter))
-                if not os.path.exists(save_dir):
-                    os.makedirs(save_dir)
-                np.save(os.path.join(save_dir, f"real_audio_{n_iter}_{i}.npy"), real_audio.cpu().numpy())
-                np.save(os.path.join(save_dir, f"real_label_{n_iter}_{i}.npy"), real_label.cpu().numpy())
-                np.save(os.path.join(save_dir, f"synth_audio_{n_iter}_{i}.npy"), synth_audio12_np)
-                torch.save({'model_state_dict': net.state_dict(),
-                        'optimizer_state_dict': optimizer.state_dict()},
-                        os.path.join(save_dir, "sssd_ecg_model.pkl"))
-                # save diffusion hyperparameters
-                torch.save(diffusion_hyperparams, os.path.join(save_dir, "diffusion_hyperparams.pt"))
-                fig = plot_ecg_comparison(
-                    real_audio_np[0],
-                    synth_audio12_np[0],
-                    label=f"iter{n_iter}_sample{i}",
-                    return_fig=True
-                )
-                # save the figure
-                fig.savefig(os.path.join(save_dir, f"ecg_comparison_{n_iter}_{i}.png"))
-                # Log the figure to W&B
-                ecg_figs.append(wandb.Image(fig, caption=f"iter{n_iter}_sample{i}"))
-            # Log all images as a list
-            wandb.log({"ecg_comparisons": ecg_figs, "iteration": n_iter})
+                
+                num_samples = min(10, len(viz_batches))
+                fixed_batches = viz_batches[:num_samples]
+                ecg_figs = []
+                for i, (real_audio, real_label) in enumerate(fixed_batches):
+                    print(f"[VIZ] Generating ECG comparison for sample {i} at iteration {n_iter}")
+                    # pdb.set_trace()
+                    real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
+                    real_label = real_label.float().cuda()
+                    # Generate synthetic ECGs with the same label
+                    synth_audio = sampling_label(
+                        net,
+                        real_audio8.shape,
+                        diffusion_hyperparams,
+                        cond=real_label
+                    )
+                    synth_audio_np = synth_audio.detach().cpu().numpy()
+                    real_audio_np = real_audio.detach().cpu().numpy()
+                    # Plot comparison for the first sample in the batch
+                    synth_audio12 = generate_four_leads(synth_audio)
+                    synth_audio12_np = synth_audio12.detach().cpu().numpy()
+                    # pdb.set_trace()
+                    # save all the parameters
+                    save_dir = os.path.join(output_directory, "val_during_train_data{}".format(n_iter))
+                    if not os.path.exists(save_dir):
+                        os.makedirs(save_dir)
+                    np.save(os.path.join(save_dir, f"real_audio_{n_iter}_{i}.npy"), real_audio.cpu().numpy())
+                    np.save(os.path.join(save_dir, f"real_label_{n_iter}_{i}.npy"), real_label.cpu().numpy())
+                    np.save(os.path.join(save_dir, f"synth_audio_{n_iter}_{i}.npy"), synth_audio12_np)
+                    torch.save({'model_state_dict': net.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict()},
+                            os.path.join(save_dir, "sssd_ecg_model.pkl"))
+                    # save diffusion hyperparameters
+                    torch.save(diffusion_hyperparams, os.path.join(save_dir, "diffusion_hyperparams.pt"))
+                    fig = plot_ecg_comparison(
+                        real_audio_np[0],
+                        synth_audio12_np[0],
+                        label=f"iter{n_iter}_sample{i}",
+                        return_fig=True
+                    )
+                    # save the figure
+                    fig.savefig(os.path.join(save_dir, f"ecg_comparison_{n_iter}_{i}.png"))
+                    # Log the figure to W&B
+                    ecg_figs.append(wandb.Image(fig, caption=f"iter{n_iter}_sample{i}"))
+                # Log all images as a list
+                wandb.log({"ecg_comparisons": ecg_figs}, step=n_iter)
 
         # save checkpoint
         if n_iter > 0 and n_iter % iters_per_ckpt == 0:
@@ -298,7 +325,7 @@ def train(output_directory,
             checkpoint_path = os.path.join(output_directory, checkpoint_name)
             print(f"[CHECKPOINT] to checkpoint path, {checkpoint_path}")
             wandb.save(checkpoint_path)
-            wandb.log({"checkpoint_saved": n_iter})
+            wandb.log({"checkpoint_saved": n_iter}, step=n_iter)
             
             # if n_iter % iters_per_test == 0:
             if False:
@@ -408,8 +435,7 @@ if __name__ == "__main__":
 
     # Add visualization split configuration
     global viz_split_config
-    viz_split_config = config.get('viz_split_config', {'use_ptbxl': True, "ptbxl_data_path": "/home/shared/ptbxl_data_sssd-ecg/condition_mimic_15"})  # Default to PTBXL if not specified
+    viz_split_config = config.get('viz_split_config', {'use_ptbxl': "True", "ptbxl_data_path": "/home/shared/ptbxl_data_sssd-ecg/condition_mimic_15"})  # Default to PTBXL if not specified
     print(f"[INFO] viz_split_config: {viz_split_config}")
 
     train(**train_config, **project_config, **viz_split_config)
-

@@ -3,16 +3,13 @@ import argparse
 import json
 import numpy as np
 import torch
-import random
 import time
-from pathlib import Path
 from models.SSSD_ECG import SSSD_ECG
 from utils.util import find_max_epoch, print_size, sampling_label, calc_diffusion_hyperparams, plot_ecg_comparison
 from utils.mimic_4_preprocess import MIMIC_IV_ECG_Dataset
 from utils.demographics_mapping import categorize_demographics
 import matplotlib.pyplot as plt
 import wandb
-import pdb
 from warnings import warn
 
 def generate_four_leads(tensor):
@@ -38,7 +35,7 @@ def plot_signal_pairs(real_signals, generated_signals, save_dir, chunk_idx, num_
     print(len(real_signals), len(generated_signals), num_signal_pair_plots)
     
     # Get the first num_samples indices
-    indices = range(min(len(real_signals), num_samples))
+    indices = range(min(len(real_signals), num_signal_pair_plots))
     
     for idx in indices:
         real = real_signals[idx]
@@ -291,7 +288,6 @@ def generate(output_directory,
         # Save chunk results
         all_generated.append(generated_audio12.detach().cpu().numpy())
         all_labels.append(cond.detach().cpu().numpy())
-        real_data_inferenced.append(real_audio.detach().cpu().numpy())
         
         # Save intermediate results
         outfile = f'{i}_samples.npy'

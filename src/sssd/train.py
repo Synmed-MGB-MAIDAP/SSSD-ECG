@@ -171,17 +171,6 @@ def train(output_directory,
 
         valloader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, drop_last=False)
     
-    elif trainset_config["finetune_dataset"] == "mimic_iv":
-        print("[INFO] Loading MIMIC-IV dataset")
-        train_data = MIMIC_IV_ECG_Dataset(dataset_path=trainset_config['data_path'], usage='train', resample_length=1024, max_samples=1000)
-        val_data = MIMIC_IV_ECG_Dataset(dataset_path=trainset_config['data_path'], usage='val', resample_length=1024, max_samples=1000)
-        print("Train data size: ", len(train_data))
-        print("Validation data size: ", len(val_data))
-        train_data = categorize_demographics(train_data)
-        val_data = categorize_demographics(val_data)
-        print("[INFO] Demographics categorized for train and val data.")
-        trainloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
-        valloader = torch.utils.data.DataLoader(val_data, batch_size=batch_size, shuffle=False)
     else:
         print(f"[ERROR] Unknown finetune_dataset: {trainset_config['finetune_dataset']}")
         raise ValueError(f"Unknown finetune_dataset: {trainset_config['finetune_dataset']}")

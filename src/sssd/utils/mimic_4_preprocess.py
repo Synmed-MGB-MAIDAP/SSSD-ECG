@@ -400,11 +400,12 @@ if __name__ == '__main__':
     # save_data_path = '/home/shared/backup/mimic-iv-ecg/resampled_len_1000/data'
     # save_label_path = '/home/shared/backup/mimic-iv-ecg/resampled_len_1000/labels'
 
-    dataset_path = '/home/shared/data/mimic/1.0'
-    save_data_path = '/home/shared/data/mimic/resampled_len_1000_with_text_embeddings/data'
-    save_label_path = '/home/shared/data/mimic/resampled_len_1000_with_text_embeddings/labels'
 
-    include_text_embeddings = True    
+    dataset_path = '/home/shared/data/mimic/1.0'
+    include_text_embeddings = False
+    temp_text_str = "_with_text_embeddings" if include_text_embeddings else ""
+    save_data_path = f'/home/shared/data/mimic/resampled_len_1000{temp_text_str}/data'
+    save_label_path = f'/home/shared/data/mimic/resampled_len_1000{temp_text_str}/labels'
     
     train_data = MIMIC_IV_ECG_Dataset(
         dataset_path=dataset_path, usage='train', resample_length=1000, include_text_embeddings=include_text_embeddings

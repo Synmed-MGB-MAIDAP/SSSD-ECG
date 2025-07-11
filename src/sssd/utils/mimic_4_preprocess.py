@@ -10,7 +10,7 @@ import numpy as np
 from scipy import signal
 import wfdb
 from wfdb import processing
-from utils.demographics_mapping import categorize_demographics
+from demographics_mapping import categorize_demographics
 import pickle
 import pdb
 import random
@@ -95,8 +95,8 @@ def translate_text_to_label(text):
 class MIMIC_IV_ECG_Dataset(Dataset):
     def __init__(
         self,
-        dataset_path: str = "/home/kumargirish/data/mimic_files/1.0",
-        other_files_path: str = "/home/kumargirish/data/mimic_files/",
+        dataset_path: str = "/home/shared/data/mimic/1.0",
+        other_files_path: str = "/home/shared/data/mimic/",
         usage: str = "all",
         num_folds: int = 20,
         test_fold: int = None,
@@ -116,8 +116,8 @@ class MIMIC_IV_ECG_Dataset(Dataset):
             if text_embedding_paths is None:
                 print("Using default embedding paths")
                 text_embedding_paths = [
-                    "/home/kumargirish/data/mimic_files/mimic_report_embeddings.csv",
-                    "/home/kumargirish/data/mimic_files/mimic_report_embeddings_II.csv",
+                    "/home/shared/data/mimic/mimic_report_embeddings.csv",
+                    "/home/shared/data/mimic/mimic_report_embeddings_II.csv",
                 ]
 
             temp = []
@@ -395,28 +395,49 @@ class MIMIC_IV_ECG_Dataset(Dataset):
 
 
 if __name__ == '__main__':
-    # Original dataset
-    dataset_path = '/home/shared/backup/mmic_iv_ecg/files/mimic-iv-ecg/1.0'
-    train_data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='train', resample_length=1000)
-    val_data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='val', resample_length=1000)
-    test_data = MIMIC_IV_ECG_Dataset(dataset_path=dataset_path, usage='test', resample_length=1000)
+    # Older paths
+    # dataset_path = '/home/shared/backup/mmic_iv_ecg/files/mimic-iv-ecg/1.0'
+    # save_data_path = '/home/shared/backup/mimic-iv-ecg/resampled_len_1000/data'
+    # save_label_path = '/home/shared/backup/mimic-iv-ecg/resampled_len_1000/labels'
 
-    train_data = categorize_demographics(train_data)
-    val_data = categorize_demographics(val_data)
-    test_data = categorize_demographics(test_data)
+    dataset_path = '/home/shared/data/mimic/1.0'
+    save_data_path = '/home/shared/data/mimic/resampled_len_1000_with_text_embeddings/data'
+    save_label_path = '/home/shared/data/mimic/resampled_len_1000_with_text_embeddings/labels'
 
-    #save data to npy file
-    data_path = '/home/shared/backup/mimic-iv-ecg/resampled_len_1000/data'
-    label_path = '/home/shared/backup/mimic-iv-ecg/resampled_len_1000/labels'
-    if not os.path.exists(data_path):
-        os.makedirs(data_path)
-
-    if not os.path.exists(label_path):
-        os.makedirs(label_path)
-    np.save(os.path.join(data_path, 'mimic_iv_train_data.npy'), np.array([x[0] for x in train_data]))
-    np.save(os.path.join(data_path, 'mimic_iv_val_data.npy'), np.array([x[0] for x in val_data]))
-    np.save(os.path.join(data_path, 'mimic_iv_test_data.npy'), np.array([x[0] for x in test_data]))
+    include_text_embeddings = True    
     
-    np.save(os.path.join(label_path, 'mimic_iv_train_labels.npy'), np.array([x[1] for x in train_data]))
-    np.save(os.path.join(label_path, 'mimic_iv_val_labels.npy'), np.array([x[1] for x in val_data]))
-    np.save(os.path.join(label_path, 'mimic_iv_test_labels.npy'), np.array([x[1] for x in test_data]))
+    train_data = MIMIC_IV_ECG_Dataset(
+        dataset_path=dataset_path, usage='train', resample_length=1000, include_text_embeddings=include_text_embeddings
+    )
+    val_data = MIMIC_IV_ECG_Dataset(
+        dataset_path=dataset_path, usage='val', resample_length=1000, include_text_embeddings=include_text_embeddings
+    )
+    test_data = MIMIC_IV_ECG_Dataset(
+        dataset_path=dataset_path, usage='test', resample_length=1000, include_text_embeddings=include_text_embeddings
+    )
+
+    print(f"Train data size: {len(train_data)}")
+    print(f"Validation data size: {len(val_data)}")
+    print(f"Test data size: {len(test_data)}")
+    
+    train_data = categorize_demographics(train_data, include_text_embedding=include_text_embeddings)
+    val_data = categorize_demographics(val_data, include_text_embedding=include_text_embeddings)
+    test_data = categorize_demographics(test_data, include_text_embedding=include_text_embeddings)
+    
+    print("Categorized demographics for train, val, and test data.")    
+    
+    #save data to npy file
+    if not os.path.exists(save_data_path):
+        os.makedirs(save_data_path)
+
+    if not os.path.exists(save_label_path):
+        os.makedirs(save_label_path)
+    np.save(os.path.join(save_data_path, 'mimic_iv_train_data.npy'), np.array([x[0] for x in train_data]))
+    np.save(os.path.join(save_data_path, 'mimic_iv_val_data.npy'), np.array([x[0] for x in val_data]))
+    np.save(os.path.join(save_data_path, 'mimic_iv_test_data.npy'), np.array([x[0] for x in test_data]))
+    print("Saved data to npy files.")
+    
+    np.save(os.path.join(save_label_path, 'mimic_iv_train_labels.npy'), np.array([x[1] for x in train_data]))
+    np.save(os.path.join(save_label_path, 'mimic_iv_val_labels.npy'), np.array([x[1] for x in val_data]))
+    np.save(os.path.join(save_label_path, 'mimic_iv_test_labels.npy'), np.array([x[1] for x in test_data]))
+    print("Saved labels to npy files.")

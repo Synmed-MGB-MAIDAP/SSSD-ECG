@@ -1,14 +1,13 @@
 import os
 import torch
 from torch.utils.data import Dataset
-from torch.utils.data import DataLoader
 
 import pandas as pd
 import numpy as np
 from scipy import signal
 import wfdb
 from wfdb import processing
-from utils.demographics_mapping import map_age, map_gender, map_heartrate, categorize_demographics
+from utils.demographics_mapping import categorize_demographics
 import pickle
 import pdb
 import random
@@ -91,19 +90,24 @@ def translate_text_to_label(text):
 
 
 class MIMIC_IV_ECG_Dataset(Dataset):
-    def __init__(self,
-                 dataset_path: str, 
-                 usage: str='all', 
-                 num_folds: int=20, 
-                 test_fold: int=None, 
-                 seed: int=42, 
-                 resample_length: int=1024,
-                 max_samples: int = None,
-                 augment: bool = False,
-                 augment_prob: float = 0.5):
+    def __init__(
+        self,
+        dataset_path: str = "/home/kumargirish/data/mimic_files/1.0",
+        other_files_path: str = "/home/kumargirish/data/mimic_files/",
+        usage: str='all', 
+        num_folds: int=20, 
+        test_fold: int=None, 
+        seed: int=42, 
+        resample_length: int=1024,
+        max_samples: int = None,
+        augment: bool = False,
+        augment_prob: float = 0.5
+    ):
 
         self.resample_length = resample_length
         self.dataset_path = dataset_path
+        self.other_files_path = other_files_path
+        
         self.augment = augment
         self.augment_prob = augment_prob
         
@@ -112,33 +116,50 @@ class MIMIC_IV_ECG_Dataset(Dataset):
             random.seed(seed)
             np.random.seed(seed)
             torch.manual_seed(seed)
+        
+        # Older paths
+        # file_paths = {
+        #     'record_list': os.path.join(self.dataset_path, 'record_list.csv'),
+        #     'machine_measurements': os.path.join(self.dataset_path, 'machine_measurements.csv'),
+        #     'patient_table': '/home/shared/backup/mimic-iv-2.2/hosp/patients.csv.gz',
+        #     'exclude_list': '/home/shared/diffusets_output/exclude_list.pkl',
+        #     'bad_quality_list': '/home/shared/backup/bad_data_quality_mimic_4_ecg.txt',
+        #     'empty_signal_list': '/home/shared/backup/empty_signal_mimic_4.txt'
+        # }
+        
+        file_paths = {
+            'record_list': os.path.join(self.dataset_path, 'record_list.csv'),
+            'machine_measurements': os.path.join(self.dataset_path, 'machine_measurements.csv'),
+            'patient_table': os.path.join(self.other_files_path, 'patients.csv.gz'),
+            'exclude_list': os.path.join(self.other_files_path, 'exclude_list.pkl'),
+            'bad_quality_list': os.path.join(self.other_files_path, 'bad_data_quality_mimic_4_ecg.txt'),
+            'empty_signal_list': os.path.join(self.other_files_path, 'empty_signal_mimic_4.txt')
+        }
 
         # Use all data
-        self.record_list = pd.read_csv(os.path.join(self.dataset_path, 'record_list.csv'), low_memory=False)
+        self.record_list = pd.read_csv(file_paths['record_list'], low_memory=False)
         # Only use data having note (FUTURE)
         # self.record_list = pd.read_csv(os.path.join(self.dataset_path, 'waveform_note_links.csv'), low_memory=False)
 
-        self.mach_mea = pd.read_csv(os.path.join(self.dataset_path, 'machine_measurements.csv'), low_memory=False)
+        self.mach_mea = pd.read_csv(file_paths['machine_measurements'], low_memory=False)
         self.sheet = pd.merge(self.record_list, self.mach_mea, how='inner', on=['subject_id', 'study_id'])
 
-        with open('/home/shared/diffusets_output/exclude_list.pkl', 'rb') as f:
-        # with open("/home/claracao/exclude_list.pkl", 'rb') as f:
+        with open(file_paths['exclude_list'], 'rb') as f:
             exclude_list = pickle.load(f)
 
         self.sheet.drop(exclude_list, inplace=True)
 
         # Data Cleaning, exclude mal-formed ecg
-        with open('/home/shared/backup/bad_data_quality_mimic_4_ecg.txt', 'r') as input_file:
+        with open(file_paths['bad_quality_list'], 'r') as input_file:
             bad_quality_list = [x.strip() for x in input_file.readlines()]
 
-        with open('/home/shared/backup/empty_signal_mimic_4.txt', 'r') as input_file:
+        with open(file_paths['empty_signal_list'], 'r') as input_file:
             empty_sig_list = [x.strip() for x in input_file.readlines()]
 
         self.sheet = self.sheet[~self.sheet['path'].isin(bad_quality_list)]
         self.sheet = self.sheet[~self.sheet['path'].isin(empty_sig_list)]
 
-        patient_table_path = '/home/shared/backup/mimic-iv-2.2/hosp/patients.csv.gz'
-        self.patient_table = pd.read_csv(patient_table_path, index_col='subject_id', low_memory=False)
+        self.patient_table = pd.read_csv(file_paths['patient_table'], index_col='subject_id', low_memory=False)
 
         self.sheet = pd.merge(self.sheet, self.patient_table, how='inner', on=['subject_id', 'subject_id'])
 

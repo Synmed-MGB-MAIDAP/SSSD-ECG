@@ -14,6 +14,7 @@ from demographics_mapping import categorize_demographics
 import pickle
 import pdb
 import random
+import argparse
 
 def create_encoding_vector(input_list):
     # encoding order
@@ -124,10 +125,9 @@ class MIMIC_IV_ECG_Dataset(Dataset):
             for embd_path in text_embedding_paths:
                 temp.append(pd.read_csv(embd_path))
             self.text_to_embed_mapping = pd.concat(temp, ignore_index=True)
+            print(f"Text embedding mapping shape: {self.text_to_embed_mapping.shape}")
         else:
             self.text_to_embed_mapping = None
-            
-        print(f"Text embedding mapping shape: {self.text_to_embed_mapping.shape}")
 
         self.resample_length = resample_length
         self.dataset_path = dataset_path
@@ -331,12 +331,15 @@ class MIMIC_IV_ECG_Dataset(Dataset):
         # TODO: add text embedding phase
         # a simple concat way 
         text_clean = '|'.join(text_clean)
-
-        text_to_embed = self._prompt_propcess(text_clean)
-        embedding = self.text_to_embed_mapping.loc[
-            self.text_to_embed_mapping["text"] == text_to_embed, "embedding"
-        ].values[0]
-        embedding = ast.literal_eval(embedding)
+        
+        if self.include_text_embeddings:
+            text_to_embed = self._prompt_propcess(text_clean)
+            embedding = self.text_to_embed_mapping.loc[
+                self.text_to_embed_mapping["text"] == text_to_embed, "embedding"
+            ].values[0]
+            embedding = ast.literal_eval(embedding)
+        else:
+            embedding = None
         
         return text_clean, embedding
 
@@ -395,6 +398,12 @@ class MIMIC_IV_ECG_Dataset(Dataset):
 
 
 if __name__ == '__main__':
+    
+    parser = argparse.ArgumentParser(description="Preprocess MIMIC-IV ECG data.")
+    parser.add_argument('--max_samples', type=int, default=None, help='Limit dataset to a small sample size if specified')
+    parser.add_argument('--include_text_embeddings', action='store_true', help='Include text embeddings in the dataset')
+    args = parser.parse_args()
+    
     # Older paths
     # dataset_path = '/home/shared/backup/mmic_iv_ecg/files/mimic-iv-ecg/1.0'
     # save_data_path = '/home/shared/backup/mimic-iv-ecg/resampled_len_1000/data'
@@ -402,19 +411,29 @@ if __name__ == '__main__':
 
 
     dataset_path = '/home/shared/data/mimic/1.0'
-    include_text_embeddings = False
+    include_text_embeddings = getattr(args, "include_text_embeddings", False)
     temp_text_str = "_with_text_embeddings" if include_text_embeddings else ""
-    save_data_path = f'/home/shared/data/mimic/resampled_len_1000{temp_text_str}/data'
-    save_label_path = f'/home/shared/data/mimic/resampled_len_1000{temp_text_str}/labels'
+    
+    max_samples = args.max_samples
+    max_samples_str = f"_max_samples_{max_samples}" if max_samples is not None else ""
+    
+    save_data_path = f'/home/shared/data/mimic/resampled_len_1000{temp_text_str}{max_samples_str}/data'
+    save_label_path = f'/home/shared/data/mimic/resampled_len_1000{temp_text_str}{max_samples_str}/labels'
     
     train_data = MIMIC_IV_ECG_Dataset(
-        dataset_path=dataset_path, usage='train', resample_length=1000, include_text_embeddings=include_text_embeddings
+        dataset_path=dataset_path, usage='train', resample_length=1000, 
+        include_text_embeddings=include_text_embeddings,
+        max_samples=max_samples
     )
     val_data = MIMIC_IV_ECG_Dataset(
-        dataset_path=dataset_path, usage='val', resample_length=1000, include_text_embeddings=include_text_embeddings
+        dataset_path=dataset_path, usage='val', resample_length=1000, 
+        include_text_embeddings=include_text_embeddings,
+        max_samples=max_samples
     )
     test_data = MIMIC_IV_ECG_Dataset(
-        dataset_path=dataset_path, usage='test', resample_length=1000, include_text_embeddings=include_text_embeddings
+        dataset_path=dataset_path, usage='test', resample_length=1000, 
+        include_text_embeddings=include_text_embeddings,
+        max_samples=max_samples
     )
 
     print(f"Train data size: {len(train_data)}")

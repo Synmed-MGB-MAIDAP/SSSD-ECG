@@ -1,5 +1,6 @@
 import random
 import torch
+from tqdm.auto import tqdm
 
 # common practive thresholds 91
 thresholds_15 = {
@@ -125,7 +126,7 @@ def categorize_demographics(data, include_text_embedding=False):
     Categorize demographics data into one-hot vectors.
     """
     new_data = []
-    for sample in data:
+    for sample in tqdm(data, desc='Categorizing demographics'):
         # print(sample)
         x, label_vec = categorize_demographics_for_one(sample, include_text_embedding)
         new_data.append([x, label_vec])

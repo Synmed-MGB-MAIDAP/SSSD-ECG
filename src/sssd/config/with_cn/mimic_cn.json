@@ -1,0 +1,65 @@
+{
+    "diffusion_config": {
+        "T": 200,
+        "beta_0": 0.0001,
+        "beta_T": 0.02
+    },
+    "wavenet_config": {
+        "in_channels": 8,
+        "out_channels": 8,
+        "num_res_layers": 36,
+        "res_channels": 256,
+        "skip_channels": 256,
+        "diffusion_step_embed_dim_in": 128,
+        "diffusion_step_embed_dim_mid": 512,
+        "diffusion_step_embed_dim_out": 512,
+        "s4_lmax": 2000,
+        "s4_d_state": 64,
+        "s4_dropout": 0.0,
+        "s4_bidirectional": 1,
+        "s4_layernorm": 1,
+        "label_embed_dims": [
+            64
+        ],
+        "label_embed_classes": 15,
+        "class_split": [
+            [
+                29,
+                1564
+            ]
+        ],
+        "embed_layer_types": [
+            "FC+A"
+        ]
+    },
+    "train_config": {
+        "data_path": "/home/shared/ptbxl_data_sssd-ecg/condition_all",
+        "output_directory": "/home/kumargirish/output_sssd-ecg/mimic_cn_sch_with_restart",
+        "ckpt_iter": "max",
+        "iters_per_ckpt": 5000,
+        "iters_per_logging": 1000,
+        "n_iters": 200000,
+        "learning_rate": 1e-3,
+        "batch_size": 32
+    },
+    "trainset_config": {
+        "segment_length": 1000,
+        "sampling_rate": 100,
+        "finetune_dataset": "mimic_iv",
+        "data_path": "/home/kumargirish/data/mimic/1.0",
+        "include_text_embeddings": 1
+    },
+    "gen_config": {
+        "output_directory": "/home/kumargirish/output_sssd-ecg/mimic_cn_sch_with_restart",
+        "ckpt_path": "/home/kumargirish/output_sssd-ecg/mimic_cn_sch_with_restart",
+        "inference_split": "test"
+    },
+    "viz_split_config": {
+        "use_ptbxl": "False",
+        "ptbxl_data_path": "/home/kumargirish/data/ptbxl/processed/d_tog_15_cn"
+    },
+    "project_config": {
+        "project_name": "SSSD-MIMIC-IV-ECG",
+        "experiment_name": "mimic_cn_sch_with_restart"
+    }
+}

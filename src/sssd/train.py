@@ -141,7 +141,7 @@ def train(output_directory,
     
     print("net device", next(net.parameters()).device)
     print(f"[INFO] trainset_config: {trainset_config}")
-    if "ptbxl" or "mimic_iv" in trainset_config["finetune_dataset"]:
+    if ("ptbxl" in trainset_config["finetune_dataset"]) or ("mimic_iv" in trainset_config["finetune_dataset"]):
 
         # load ptbxl or mimic_iv dataset from npy files
         print(f"[INFO] Loading {trainset_config['finetune_dataset']} dataset")

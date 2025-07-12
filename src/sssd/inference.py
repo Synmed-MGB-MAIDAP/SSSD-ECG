@@ -134,17 +134,21 @@ def generate(output_directory,
     index_4 = torch.tensor([1,8,9,10])
 
     # Load data based on dataset type
-    if trainset_config["finetune_dataset"] == "ptbxl_all":
-        print("Loading PTBXL dataset")
+    fine_tune_dataset = trainset_config["finetune_dataset"]
+
+    if "ptbxl" in fine_tune_dataset or "mimic_iv" in fine_tune_dataset:
+        
+        print(f"[INFO] Loading {fine_tune_dataset} dataset")
+
         label_path = os.path.join(data_path, 'labels')
         data_path = os.path.join(data_path, 'data')
         
         # Load real data for comparison
-        real_data = np.load(os.path.join(data_path, f'ptbxl_{inference_split}_data.npy'))
-        labels = np.load(os.path.join(label_path, f'ptbxl_{inference_split}_labels.npy'))
-        
-        print("Loaded data from ", os.path.join(data_path, f'ptbxl_{inference_split}_data.npy'))
-        print("Loaded labels from ", os.path.join(label_path, f'ptbxl_{inference_split}_labels.npy'))
+        real_data = np.load(os.path.join(data_path, f'{fine_tune_dataset}_{inference_split}_data.npy'))
+        labels = np.load(os.path.join(label_path, f'{fine_tune_dataset}_{inference_split}_labels.npy'))
+
+        print("Loaded data from ", os.path.join(data_path, f'{fine_tune_dataset}_{inference_split}_data.npy'))
+        print("Loaded labels from ", os.path.join(label_path, f'{fine_tune_dataset}_{inference_split}_labels.npy'))
         print("Number of samples: ", len(labels))
         print("Each label shape: ", labels[0].shape)
         
@@ -156,39 +160,10 @@ def generate(output_directory,
             else:
                 chunks.append(labels[i:])
         
-        signal_length = 1000  # PTBXL signal length
-        
-    elif trainset_config["finetune_dataset"] == "mimic_iv":
-        print("Loading MIMIC-IV dataset")
-        test_data = MIMIC_IV_ECG_Dataset(
-            dataset_path=trainset_config['data_path'], 
-            usage=inference_split,
-            resample_length=1024,
-            max_samples=1000
-        )
-        test_data = categorize_demographics(test_data)
-        
-        # Convert to numpy arrays
-        real_data = []
-        labels = []
-        for audio, label in test_data:
-            real_data.append(audio.numpy())
-            labels.append(label.numpy())
-        real_data = np.stack(real_data)
-        labels = np.stack(labels)
-        
-        print("Number of samples: ", len(labels))
-        print("Each label shape: ", labels[0].shape)
-        
-        # break down labels into chunks of 400
-        chunks = []
-        for i in range(0, len(labels), 400):
-            if i + 400 <= len(labels):
-                chunks.append(labels[i:i+400])
-            else:
-                chunks.append(labels[i:])
-        
-        signal_length = 1024  # MIMIC-IV signal length
+        signal_length = 1000 # Assuming signal length is 1000 for both datasets
+    
+    else:
+        raise ValueError(f"Unsupported dataset: {fine_tune_dataset}. Supported datasets are 'ptbxl' and 'mimic_iv'.")
     
     print("Starting generation")
     tik = time.time()
@@ -204,7 +179,7 @@ def generate(output_directory,
     # Synth data path
     synth_data_path = os.path.join(
         ckpt_path,
-        f"synth_{trainset_config['finetune_dataset']}_{inference_split}_data_{ckpt_iter}_samples_{num_samples}"
+        f"synth_{fine_tune_dataset}_{inference_split}_data_{ckpt_iter}_samples_{num_samples}"
     )
     os.makedirs(synth_data_path, exist_ok=True)
     print("Using synth data path: ", synth_data_path)
@@ -222,7 +197,7 @@ def generate(output_directory,
             "data_path": data_path,
             "signal_length": signal_length,
             "inference_split": inference_split,
-            "finetune_dataset": trainset_config["finetune_dataset"]
+            "fine_tune_dataset": fine_tune_dataset
         }
     )
     

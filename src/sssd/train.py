@@ -225,83 +225,83 @@ def train(output_directory,
             if scheduler is not None:
                 scheduler.step()
 
-            if n_iter % iters_per_logging == 0:
-                print("[LOGGING] iteration: {} \tloss: {}".format(n_iter, loss.item()))
-                wandb.log({"loss": loss.item()}, step=n_iter)
-                                
-                # --- EVALUATION STEP ---
-                print("[EVAL] Evaluating model at iteration {}".format(n_iter))
-                val_loss = evaluate_model(net, valloader, index_8, diffusion_hyperparams, trainset_config['loss_fn'])
-                print(f"[VAL] iteration: {n_iter} \tval_loss: {val_loss}")
-                wandb.log({"val_loss": val_loss}, step=n_iter)                
-                
-                # --- ECG PLOTTING AND LOGGING ---
-                # Choose visualization data based on configuration
-                if bool(viz_split_config['use_ptbxl']):
-                    print("[VIZ] Using PTBXL validation split for visualization.")
-                    # Use PTBXL validation split regardless of training dataset
-                    # Always load PTBXL validation data for visualization if needed
-                    if trainset_config["finetune_dataset"] != "ptbxl_all":
-                        print(f"[VIZ] Loading PTBXL val data from {ptbxl_data_path}")
-                        ptbxl_val_data = np.load(os.path.join(ptbxl_data_path, 'data/ptbxl_val_data.npy'))
-                        ptbxl_val_labels = np.load(os.path.join(ptbxl_data_path, 'labels/ptbxl_val_labels.npy'))
-                        ptbxl_val_data_list = []
-                        for i in range(len(ptbxl_val_data)):
-                            ptbxl_val_data_list.append([ptbxl_val_data[i], ptbxl_val_labels[i]])
-                        ptbxl_valloader = torch.utils.data.DataLoader(ptbxl_val_data_list, shuffle=False, batch_size=batch_size, drop_last=False)
-                        viz_batches = list(ptbxl_valloader)
-                    else:
-                        viz_batches = list(valloader)
+        if n_iter % iters_per_logging == 0:
+            print("[LOGGING] iteration: {} \tloss: {}".format(n_iter, loss.item()))
+            wandb.log({"loss": loss.item()}, step=n_iter)
+                            
+            # --- EVALUATION STEP ---
+            print("[EVAL] Evaluating model at iteration {}".format(n_iter))
+            val_loss = evaluate_model(net, valloader, index_8, diffusion_hyperparams, trainset_config['loss_fn'])
+            print(f"[VAL] iteration: {n_iter} \tval_loss: {val_loss}")
+            wandb.log({"val_loss": val_loss}, step=n_iter)                
+            
+            # --- ECG PLOTTING AND LOGGING ---
+            # Choose visualization data based on configuration
+            if bool(viz_split_config['use_ptbxl']):
+                print("[VIZ] Using PTBXL validation split for visualization.")
+                # Use PTBXL validation split regardless of training dataset
+                # Always load PTBXL validation data for visualization if needed
+                if trainset_config["finetune_dataset"] != "ptbxl_all":
+                    print(f"[VIZ] Loading PTBXL val data from {ptbxl_data_path}")
+                    ptbxl_val_data = np.load(os.path.join(ptbxl_data_path, 'data/ptbxl_val_data.npy'))
+                    ptbxl_val_labels = np.load(os.path.join(ptbxl_data_path, 'labels/ptbxl_val_labels.npy'))
+                    ptbxl_val_data_list = []
+                    for i in range(len(ptbxl_val_data)):
+                        ptbxl_val_data_list.append([ptbxl_val_data[i], ptbxl_val_labels[i]])
+                    ptbxl_valloader = torch.utils.data.DataLoader(ptbxl_val_data_list, shuffle=False, batch_size=batch_size, drop_last=False)
+                    viz_batches = list(ptbxl_valloader)
                 else:
-                    print("[VIZ] Using MIMIC-IV validation split for visualization.")
-                    # Use MIMIC-IV validation split
                     viz_batches = list(valloader)
-                
-                num_samples = min(10, len(viz_batches))
-                fixed_batches = viz_batches[:num_samples]
-                ecg_figs = []
-                for i, (real_audio, real_label) in enumerate(fixed_batches):
-                    print(f"[VIZ] Generating ECG comparison for sample {i} at iteration {n_iter}")
-                    # pdb.set_trace()
-                    real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
-                    real_label = real_label.float().cuda()
-                    # Generate synthetic ECGs with the same label
-                    synth_audio = sampling_label(
-                        net,
-                        real_audio8.shape,
-                        diffusion_hyperparams,
-                        cond=real_label
-                    )
-                    synth_audio_np = synth_audio.detach().cpu().numpy()
-                    real_audio_np = real_audio.detach().cpu().numpy()
-                    # Plot comparison for the first sample in the batch
-                    synth_audio12 = generate_four_leads(synth_audio)
-                    synth_audio12_np = synth_audio12.detach().cpu().numpy()
-                    # pdb.set_trace()
-                    # save all the parameters
-                    save_dir = os.path.join(output_directory, "val_during_train_data{}".format(n_iter))
-                    if not os.path.exists(save_dir):
-                        os.makedirs(save_dir)
-                    np.save(os.path.join(save_dir, f"real_audio_{n_iter}_{i}.npy"), real_audio.cpu().numpy())
-                    np.save(os.path.join(save_dir, f"real_label_{n_iter}_{i}.npy"), real_label.cpu().numpy())
-                    np.save(os.path.join(save_dir, f"synth_audio_{n_iter}_{i}.npy"), synth_audio12_np)
-                    torch.save({'model_state_dict': net.state_dict(),
-                            'optimizer_state_dict': optimizer.state_dict()},
-                            os.path.join(save_dir, "sssd_ecg_model.pkl"))
-                    # save diffusion hyperparameters
-                    torch.save(diffusion_hyperparams, os.path.join(save_dir, "diffusion_hyperparams.pt"))
-                    fig = plot_ecg_comparison(
-                        real_audio_np[0],
-                        synth_audio12_np[0],
-                        label=f"iter{n_iter}_sample{i}",
-                        return_fig=True
-                    )
-                    # save the figure
-                    fig.savefig(os.path.join(save_dir, f"ecg_comparison_{n_iter}_{i}.png"))
-                    # Log the figure to W&B
-                    ecg_figs.append(wandb.Image(fig, caption=f"iter{n_iter}_sample{i}"))
-                # Log all images as a list
-                wandb.log({"ecg_comparisons": ecg_figs}, step=n_iter)
+            else:
+                print("[VIZ] Using MIMIC-IV validation split for visualization.")
+                # Use MIMIC-IV validation split
+                viz_batches = list(valloader)
+            
+            num_samples = min(10, len(viz_batches))
+            fixed_batches = viz_batches[:num_samples]
+            ecg_figs = []
+            for i, (real_audio, real_label) in enumerate(fixed_batches):
+                print(f"[VIZ] Generating ECG comparison for sample {i} at iteration {n_iter}")
+                # pdb.set_trace()
+                real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
+                real_label = real_label.float().cuda()
+                # Generate synthetic ECGs with the same label
+                synth_audio = sampling_label(
+                    net,
+                    real_audio8.shape,
+                    diffusion_hyperparams,
+                    cond=real_label
+                )
+                synth_audio_np = synth_audio.detach().cpu().numpy()
+                real_audio_np = real_audio.detach().cpu().numpy()
+                # Plot comparison for the first sample in the batch
+                synth_audio12 = generate_four_leads(synth_audio)
+                synth_audio12_np = synth_audio12.detach().cpu().numpy()
+                # pdb.set_trace()
+                # save all the parameters
+                save_dir = os.path.join(output_directory, "val_during_train_data{}".format(n_iter))
+                if not os.path.exists(save_dir):
+                    os.makedirs(save_dir)
+                np.save(os.path.join(save_dir, f"real_audio_{n_iter}_{i}.npy"), real_audio.cpu().numpy())
+                np.save(os.path.join(save_dir, f"real_label_{n_iter}_{i}.npy"), real_label.cpu().numpy())
+                np.save(os.path.join(save_dir, f"synth_audio_{n_iter}_{i}.npy"), synth_audio12_np)
+                torch.save({'model_state_dict': net.state_dict(),
+                        'optimizer_state_dict': optimizer.state_dict()},
+                        os.path.join(save_dir, "sssd_ecg_model.pkl"))
+                # save diffusion hyperparameters
+                torch.save(diffusion_hyperparams, os.path.join(save_dir, "diffusion_hyperparams.pt"))
+                fig = plot_ecg_comparison(
+                    real_audio_np[0],
+                    synth_audio12_np[0],
+                    label=f"iter{n_iter}_sample{i}",
+                    return_fig=True
+                )
+                # save the figure
+                fig.savefig(os.path.join(save_dir, f"ecg_comparison_{n_iter}_{i}.png"))
+                # Log the figure to W&B
+                ecg_figs.append(wandb.Image(fig, caption=f"iter{n_iter}_sample{i}"))
+            # Log all images as a list
+            wandb.log({"ecg_comparisons": ecg_figs}, step=n_iter)
 
         # save checkpoint
         if n_iter > 0 and n_iter % iters_per_ckpt == 0:

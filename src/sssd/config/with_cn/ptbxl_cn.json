@@ -45,7 +45,7 @@
     "trainset_config": {
         "segment_length": 1000,
         "sampling_rate": 100,
-        "finetune_dataset": "ptbxl_all",
+        "finetune_dataset": "ptbxl",
         "loss_fn": "MSE",
         "data_path": "/home/kumargirish/data/ptbxl/processed/d_tog_15_cn",
         "include_text_embeddings": 1

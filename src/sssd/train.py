@@ -220,7 +220,7 @@ def train(
             X = audio, label
             
             loss = training_loss_label(net, trainset_config['loss_fn'], X, diffusion_hyperparams)
-            wandb.log({'training loss': loss.item(), 'iteration': n_iter})
+            wandb.log({'training loss': loss.item(), 'iteration': n_iter}, step=n_iter)
             loss.backward()
             optimizer.step()
             if scheduler is not None:

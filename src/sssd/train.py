@@ -14,21 +14,22 @@ import sys
 import importlib
 import os
 
-def train(output_directory,
-          ckpt_iter,
-          n_iters,
-          data_path,
-          iters_per_ckpt,
-          iters_per_logging,
-          iters_per_test,
-          learning_rate,
-         batch_size,
-         project_name,
-         experiment_name,
-         use_ptbxl,
-         ptbxl_data_path,
-         scheduler_func=None
-    ):
+def train(
+    output_directory,
+    ckpt_iter,
+    n_iters,
+    data_path,
+    iters_per_ckpt,
+    iters_per_logging,
+    learning_rate,
+    batch_size,
+    project_name,
+    experiment_name,
+    use_ptbxl,
+    ptbxl_data_path,
+    scheduler_func=None,
+    iters_per_test=None,
+):
   
     """
     Train Diffusion Models

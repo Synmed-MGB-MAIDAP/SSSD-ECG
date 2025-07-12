@@ -157,56 +157,117 @@ class Residual_group(nn.Module):
 
 
 class SSSD_ECG(nn.Module):
-    def __init__(self, in_channels, res_channels, skip_channels, out_channels, 
-                 num_res_layers,
-                 diffusion_step_embed_dim_in, 
-                 diffusion_step_embed_dim_mid,
-                 diffusion_step_embed_dim_out,
-                 s4_lmax,
-                 s4_d_state,
-                 s4_dropout,
-                 s4_bidirectional,
-                 s4_layernorm,
-                label_embed_classes=71,
-                class_split=[[0,70]],
-                label_embed_dims=[128]):
+    def __init__(
+        self,
+        in_channels,
+        res_channels,
+        skip_channels,
+        out_channels,
+        num_res_layers,
+        diffusion_step_embed_dim_in,
+        diffusion_step_embed_dim_mid,
+        diffusion_step_embed_dim_out,
+        s4_lmax,
+        s4_d_state,
+        s4_dropout,
+        s4_bidirectional,
+        s4_layernorm,
+        label_embed_classes=71,
+        class_split=[[0, 70]],
+        label_embed_dims=[128],
+        embed_layer_types=None,
+    ):
         super(SSSD_ECG, self).__init__()
 
-        self.init_conv = nn.Sequential(Conv(in_channels, res_channels, kernel_size=1), nn.ReLU())
+        self.init_conv = nn.Sequential(
+            Conv(in_channels, res_channels, kernel_size=1), nn.ReLU()
+        )
         # class_split is [index1, index2] to split into different group of classes
         self.class_split = class_split
         self.label_embed_classes = label_embed_classes
         self.label_embed_dims = label_embed_dims
-        
+        self.embed_layer_types = embed_layer_types
+        print("Using embedding layer types: ", embed_layer_types)
+
         self.embedding_layers = []
+
+        def _resolve_emb_layer_type(d_in, d_out, embed_layer_types, i):
+            if (embed_layer_types is None) or (embed_layer_types[i]) == "Emb":
+                return nn.Linear(
+                    d_in,
+                    d_out,
+                    bias=False,
+                )
+            elif embed_layer_types[i] == "FC":
+                return nn.Linear(
+                    d_in,
+                    d_out,
+                    bias=True,
+                )
+            elif embed_layer_types[i] == "FC+A":
+                return nn.Sequential(
+                    nn.Linear(
+                        d_in,
+                        d_out,
+                        bias=True,
+                    ),
+                    nn.ReLU(),
+                )
+            elif embed_layer_types[i] == "FC+A+LN":
+                return nn.Sequential(
+                    nn.Linear(
+                        d_in,
+                        d_out,
+                        bias=True,
+                    ),
+                    nn.ReLU(),
+                    nn.LayerNorm(d_out),
+                )
+            else:
+                raise ValueError(
+                    f"Unknown embedding layer type: {embed_layer_types[i]}"
+                )
+
         for i, index in enumerate(self.class_split):
             if index[0] <= index[1]:
                 label_classes = index[1] - index[0] + 1
             else:
                 label_classes = index[0] - index[1] + 1
-            self.embedding_layers.append(nn.Embedding(label_classes, self.label_embed_dims[i]))
-            
+
+            self.embedding_layers.append(
+                # nn.Embedding(label_classes, self.label_embed_dims[i])
+                _resolve_emb_layer_type(
+                    label_classes, self.label_embed_dims[i], embed_layer_types, i
+                )
+            )
+
+        print("Created the following embedding layers:")
+        [print(x) for x in self.embedding_layers]
 
         # 128 is the default embedding dimension
         self.embedding_dim = sum(self.label_embed_dims)
 
-        self.residual_layer = Residual_group(res_channels=res_channels, 
-                                             skip_channels=skip_channels, 
-                                             num_res_layers=num_res_layers, 
-                                             diffusion_step_embed_dim_in=diffusion_step_embed_dim_in,
-                                             diffusion_step_embed_dim_mid=diffusion_step_embed_dim_mid,
-                                             diffusion_step_embed_dim_out=diffusion_step_embed_dim_out,
-                                             in_channels=in_channels,
-                                             s4_lmax=s4_lmax,
-                                             s4_d_state=s4_d_state,
-                                             s4_dropout=s4_dropout,
-                                             s4_bidirectional=s4_bidirectional,
-                                             s4_layernorm=s4_layernorm,
-                                            label_embed_dim=self.embedding_dim)
-        
-        self.final_conv = nn.Sequential(Conv(skip_channels, skip_channels, kernel_size=1),
-                                        nn.ReLU(),
-                                        ZeroConv1d(skip_channels, out_channels))
+        self.residual_layer = Residual_group(
+            res_channels=res_channels,
+            skip_channels=skip_channels,
+            num_res_layers=num_res_layers,
+            diffusion_step_embed_dim_in=diffusion_step_embed_dim_in,
+            diffusion_step_embed_dim_mid=diffusion_step_embed_dim_mid,
+            diffusion_step_embed_dim_out=diffusion_step_embed_dim_out,
+            in_channels=in_channels,
+            s4_lmax=s4_lmax,
+            s4_d_state=s4_d_state,
+            s4_dropout=s4_dropout,
+            s4_bidirectional=s4_bidirectional,
+            s4_layernorm=s4_layernorm,
+            label_embed_dim=self.embedding_dim,
+        )
+
+        self.final_conv = nn.Sequential(
+            Conv(skip_channels, skip_channels, kernel_size=1),
+            nn.ReLU(),
+            ZeroConv1d(skip_channels, out_channels),
+        )
 
     def forward(self, input_data):
 
@@ -214,18 +275,19 @@ class SSSD_ECG(nn.Module):
         noise, label, diffusion_steps = input_data
 
         embeddings = []
-        
+
         for i, index in enumerate(self.class_split):
             if index[0] <= index[1]:
-                label_class = label[:,index[0]:index[1]+1]
+                label_class = label[:, index[0] : index[1] + 1]
             else:
                 # print(f"label[:,{index[0]}:{index[1]}-1:-1]")
-                label_class = label[:,torch.tensor([index[0], index[1]])]
+                label_class = label[:, torch.tensor([index[0], index[1]])]
             embedding_layer = self.embedding_layers[i]
             label_class = label_class.to(device)
             embedding_layer = embedding_layer.to(device)
 
-            embeddings.append(label_class @ embedding_layer.weight)
+            # embeddings.append(label_class @ embedding_layer.weight)
+            embeddings.append(embedding_layer(label_class.float()))
 
         label_embed = torch.cat(embeddings, dim=1)
 

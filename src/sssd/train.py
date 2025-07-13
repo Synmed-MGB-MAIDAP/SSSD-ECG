@@ -226,157 +226,157 @@ def train(
             if scheduler is not None:
                 scheduler.step()
 
-        if n_iter % iters_per_logging == 0:
-            print("[LOGGING] iteration: {} \tloss: {}".format(n_iter, loss.item()))
-            wandb.log({"loss": loss.item()}, step=n_iter)
-                            
-            # --- EVALUATION STEP ---
-            print("[EVAL] Evaluating model at iteration {}".format(n_iter))
-            val_loss = evaluate_model(net, valloader, index_8, diffusion_hyperparams, trainset_config['loss_fn'])
-            print(f"[VAL] iteration: {n_iter} \tval_loss: {val_loss}")
-            wandb.log({"val_loss": val_loss}, step=n_iter)                
-            
-            # --- ECG PLOTTING AND LOGGING ---
-            # Choose visualization data based on configuration
-            if bool(viz_split_config['use_ptbxl']):
-                print("[VIZ] Using PTBXL validation split for visualization.")
-                # Use PTBXL validation split regardless of training dataset
-                # Always load PTBXL validation data for visualization if needed
-                if trainset_config["finetune_dataset"] != "ptbxl_all":
-                    print(f"[VIZ] Loading PTBXL val data from {ptbxl_data_path}")
-                    ptbxl_val_data = np.load(os.path.join(ptbxl_data_path, 'data/ptbxl_val_data.npy'))
-                    ptbxl_val_labels = np.load(os.path.join(ptbxl_data_path, 'labels/ptbxl_val_labels.npy'))
-                    ptbxl_val_data_list = []
-                    for i in range(len(ptbxl_val_data)):
-                        ptbxl_val_data_list.append([ptbxl_val_data[i], ptbxl_val_labels[i]])
-                    ptbxl_valloader = torch.utils.data.DataLoader(ptbxl_val_data_list, shuffle=False, batch_size=batch_size, drop_last=False)
-                    viz_batches = list(ptbxl_valloader)
-                else:
-                    viz_batches = list(valloader)
-            else:
-                print("[VIZ] Using MIMIC-IV validation split for visualization.")
-                # Use MIMIC-IV validation split
-                viz_batches = list(valloader)
-            
-            num_samples = min(10, len(viz_batches))
-            fixed_batches = viz_batches[:num_samples]
-            ecg_figs = []
-            for i, (real_audio, real_label) in enumerate(fixed_batches):
-                print(f"[VIZ] Generating ECG comparison for sample {i} at iteration {n_iter}")
-                # pdb.set_trace()
-                real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
-                real_label = real_label.float().cuda()
-                # Generate synthetic ECGs with the same label
-                synth_audio = sampling_label(
-                    net,
-                    real_audio8.shape,
-                    diffusion_hyperparams,
-                    cond=real_label
-                )
-                synth_audio_np = synth_audio.detach().cpu().numpy()
-                real_audio_np = real_audio.detach().cpu().numpy()
-                # Plot comparison for the first sample in the batch
-                synth_audio12 = generate_four_leads(synth_audio)
-                synth_audio12_np = synth_audio12.detach().cpu().numpy()
-                # pdb.set_trace()
-                # save all the parameters
-                save_dir = os.path.join(output_directory, "val_during_train_data{}".format(n_iter))
-                if not os.path.exists(save_dir):
-                    os.makedirs(save_dir)
-                np.save(os.path.join(save_dir, f"real_audio_{n_iter}_{i}.npy"), real_audio.cpu().numpy())
-                np.save(os.path.join(save_dir, f"real_label_{n_iter}_{i}.npy"), real_label.cpu().numpy())
-                np.save(os.path.join(save_dir, f"synth_audio_{n_iter}_{i}.npy"), synth_audio12_np)
-                torch.save({'model_state_dict': net.state_dict(),
-                        'optimizer_state_dict': optimizer.state_dict()},
-                        os.path.join(save_dir, "sssd_ecg_model.pkl"))
-                # save diffusion hyperparameters
-                torch.save(diffusion_hyperparams, os.path.join(save_dir, "diffusion_hyperparams.pt"))
-                fig = plot_ecg_comparison(
-                    real_audio_np[0],
-                    synth_audio12_np[0],
-                    label=f"iter{n_iter}_sample{i}",
-                    return_fig=True
-                )
-                # save the figure
-                fig.savefig(os.path.join(save_dir, f"ecg_comparison_{n_iter}_{i}.png"))
-                # Log the figure to W&B
-                ecg_figs.append(wandb.Image(fig, caption=f"iter{n_iter}_sample{i}"))
-            # Log all images as a list
-            wandb.log({"ecg_comparisons": ecg_figs}, step=n_iter)
-
-        # save checkpoint
-        if n_iter > 0 and n_iter % iters_per_ckpt == 0:
-            checkpoint_name = '{}.pkl'.format(n_iter)
-            print(f"[CHECKPOINT] Saving checkpoint: {checkpoint_name}")
-            torch.save({'model_state_dict': net.state_dict(),
-                        'optimizer_state_dict': optimizer.state_dict()},
-                        os.path.join(output_directory, checkpoint_name))
-            # Log the model checkpoint as an artifact to W&B
-            checkpoint_path = os.path.join(output_directory, checkpoint_name)
-            print(f"[CHECKPOINT] to checkpoint path, {checkpoint_path}")
-            wandb.save(checkpoint_path)
-            wandb.log({"checkpoint_saved": n_iter}, step=n_iter)
-            
-            # if n_iter % iters_per_test == 0:
-            if False:
-                # pdb.set_trace()
-                print(f"[TEST] Running inference and evaluation at iteration {n_iter}")
-                # Add inference and evals/sssd_eval to sys.path if not already present
-                inference_path = os.path.dirname(os.path.abspath(__file__))
-                eval_path = os.path.abspath(os.path.join(inference_path, '../../../evals/sssd_eval'))
-                if inference_path not in sys.path:
-                    sys.path.append(inference_path)
-                if eval_path not in sys.path:
-                    sys.path.append(eval_path)
-                # Import generate from inference.py
-                inference_mod = importlib.import_module('inference')
-                # Prepare arguments for generate
-                ckpt_path = output_directory
-                test_output_dir = f"{output_directory}/inference_{n_iter}_test"
-                test_ckpt_iter = n_iter
-                test_data_path = os.path.dirname(os.path.dirname(data_path))  # go up to the original data_path
-                test_experiment_name = experiment_name
-                print(f"[TEST] generate parameters: {ckpt_path}, {test_output_dir}, {test_ckpt_iter}, {test_data_path}, {test_experiment_name}")
-                # Run inference to generate test samples
-                inference_mod.generate(
-                    output_directory=test_output_dir,
-                    num_samples=batch_size,  # or a fixed number if desired
-                    ckpt_path=ckpt_path,
-                    data_path=test_data_path,
-                    ckpt_iter=test_ckpt_iter,
-                    experiment_name=test_experiment_name,
-                    inference_split="test"
-                )
-                # Import and run quick_eval
-                try:
-                    from quick_eval import load_data_chunks, main_eval
-                    # Use the chunked data directory for generated data
-                    generated_data_dir = os.path.join(ckpt_path, f"synth_test_data_{test_ckpt_iter}")
-                    real_data_file = os.path.join(ckpt_path, f"synth_test_data_{test_ckpt_iter}", '..', 'real_data.npy')
-                    all_labels_file = os.path.join(ckpt_path, f"synth_test_data_{test_ckpt_iter}", '..', 'all_labels.npy')
-                    # Fallback: try to find the correct real/label files
-                    if not os.path.exists(real_data_file):
-                        real_data_file = os.path.join(ckpt_path, f"synth_test_data_{test_ckpt_iter}", 'real_data.npy')
-                    if not os.path.exists(all_labels_file):
-                        all_labels_file = os.path.join(ckpt_path, f"synth_test_data_{test_ckpt_iter}", 'all_labels.npy')
-                    if os.path.exists(generated_data_dir) and os.path.exists(real_data_file) and os.path.exists(all_labels_file):
-                        real_data = np.load(real_data_file)
-                        all_labels = np.load(all_labels_file)
-                        generated_data, generated_labels = load_data_chunks(generated_data_dir)
-                        min_size = min(generated_data.shape[0], real_data.shape[0])
-                        generated_data = generated_data[:min_size]
-                        generated_labels = generated_labels[:min_size]
-                        real_data = real_data[:min_size]
-                        all_labels = all_labels[:min_size]
-                        assert np.all(generated_labels == all_labels), "Labels do not match between generated and real data!"
-                        print(f"[TEST] Running main_eval on {min_size} test samples...")
-                        main_eval(real_data, generated_data, all_labels)
+            if n_iter % iters_per_logging == 0:
+                print("[LOGGING] iteration: {} \tloss: {}".format(n_iter, loss.item()))
+                wandb.log({"loss": loss.item()}, step=n_iter)
+                                
+                # --- EVALUATION STEP ---
+                print("[EVAL] Evaluating model at iteration {}".format(n_iter))
+                val_loss = evaluate_model(net, valloader, index_8, diffusion_hyperparams, trainset_config['loss_fn'])
+                print(f"[VAL] iteration: {n_iter} \tval_loss: {val_loss}")
+                wandb.log({"val_loss": val_loss}, step=n_iter)                
+                
+                # --- ECG PLOTTING AND LOGGING ---
+                # Choose visualization data based on configuration
+                if bool(viz_split_config['use_ptbxl']):
+                    print("[VIZ] Using PTBXL validation split for visualization.")
+                    # Use PTBXL validation split regardless of training dataset
+                    # Always load PTBXL validation data for visualization if needed
+                    if trainset_config["finetune_dataset"] != "ptbxl_all":
+                        print(f"[VIZ] Loading PTBXL val data from {ptbxl_data_path}")
+                        ptbxl_val_data = np.load(os.path.join(ptbxl_data_path, 'data/ptbxl_val_data.npy'))
+                        ptbxl_val_labels = np.load(os.path.join(ptbxl_data_path, 'labels/ptbxl_val_labels.npy'))
+                        ptbxl_val_data_list = []
+                        for i in range(len(ptbxl_val_data)):
+                            ptbxl_val_data_list.append([ptbxl_val_data[i], ptbxl_val_labels[i]])
+                        ptbxl_valloader = torch.utils.data.DataLoader(ptbxl_val_data_list, shuffle=False, batch_size=batch_size, drop_last=False)
+                        viz_batches = list(ptbxl_valloader)
                     else:
-                        print(f"[TEST] Skipping quick_eval: missing files or directories.\nGenerated: {generated_data_dir}\nReal: {real_data_file}\nLabels: {all_labels_file}")
-                except Exception as e:
-                    print(f"[TEST] quick_eval failed: {e}")
+                        viz_batches = list(valloader)
+                else:
+                    print("[VIZ] Using MIMIC-IV validation split for visualization.")
+                    # Use MIMIC-IV validation split
+                    viz_batches = list(valloader)
+                
+                num_samples = min(10, len(viz_batches))
+                fixed_batches = viz_batches[:num_samples]
+                ecg_figs = []
+                for i, (real_audio, real_label) in enumerate(fixed_batches):
+                    print(f"[VIZ] Generating ECG comparison for sample {i} at iteration {n_iter}")
+                    # pdb.set_trace()
+                    real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
+                    real_label = real_label.float().cuda()
+                    # Generate synthetic ECGs with the same label
+                    synth_audio = sampling_label(
+                        net,
+                        real_audio8.shape,
+                        diffusion_hyperparams,
+                        cond=real_label
+                    )
+                    synth_audio_np = synth_audio.detach().cpu().numpy()
+                    real_audio_np = real_audio.detach().cpu().numpy()
+                    # Plot comparison for the first sample in the batch
+                    synth_audio12 = generate_four_leads(synth_audio)
+                    synth_audio12_np = synth_audio12.detach().cpu().numpy()
+                    # pdb.set_trace()
+                    # save all the parameters
+                    save_dir = os.path.join(output_directory, "val_during_train_data{}".format(n_iter))
+                    if not os.path.exists(save_dir):
+                        os.makedirs(save_dir)
+                    np.save(os.path.join(save_dir, f"real_audio_{n_iter}_{i}.npy"), real_audio.cpu().numpy())
+                    np.save(os.path.join(save_dir, f"real_label_{n_iter}_{i}.npy"), real_label.cpu().numpy())
+                    np.save(os.path.join(save_dir, f"synth_audio_{n_iter}_{i}.npy"), synth_audio12_np)
+                    torch.save({'model_state_dict': net.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict()},
+                            os.path.join(save_dir, "sssd_ecg_model.pkl"))
+                    # save diffusion hyperparameters
+                    torch.save(diffusion_hyperparams, os.path.join(save_dir, "diffusion_hyperparams.pt"))
+                    fig = plot_ecg_comparison(
+                        real_audio_np[0],
+                        synth_audio12_np[0],
+                        label=f"iter{n_iter}_sample{i}",
+                        return_fig=True
+                    )
+                    # save the figure
+                    fig.savefig(os.path.join(save_dir, f"ecg_comparison_{n_iter}_{i}.png"))
+                    # Log the figure to W&B
+                    ecg_figs.append(wandb.Image(fig, caption=f"iter{n_iter}_sample{i}"))
+                # Log all images as a list
+                wandb.log({"ecg_comparisons": ecg_figs}, step=n_iter)
 
-        n_iter += 1
+            # save checkpoint
+            if n_iter > 0 and n_iter % iters_per_ckpt == 0:
+                checkpoint_name = '{}.pkl'.format(n_iter)
+                print(f"[CHECKPOINT] Saving checkpoint: {checkpoint_name}")
+                torch.save({'model_state_dict': net.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict()},
+                            os.path.join(output_directory, checkpoint_name))
+                # Log the model checkpoint as an artifact to W&B
+                checkpoint_path = os.path.join(output_directory, checkpoint_name)
+                print(f"[CHECKPOINT] to checkpoint path, {checkpoint_path}")
+                wandb.save(checkpoint_path)
+                wandb.log({"checkpoint_saved": n_iter}, step=n_iter)
+                
+                # if n_iter % iters_per_test == 0:
+                if False:
+                    # pdb.set_trace()
+                    print(f"[TEST] Running inference and evaluation at iteration {n_iter}")
+                    # Add inference and evals/sssd_eval to sys.path if not already present
+                    inference_path = os.path.dirname(os.path.abspath(__file__))
+                    eval_path = os.path.abspath(os.path.join(inference_path, '../../../evals/sssd_eval'))
+                    if inference_path not in sys.path:
+                        sys.path.append(inference_path)
+                    if eval_path not in sys.path:
+                        sys.path.append(eval_path)
+                    # Import generate from inference.py
+                    inference_mod = importlib.import_module('inference')
+                    # Prepare arguments for generate
+                    ckpt_path = output_directory
+                    test_output_dir = f"{output_directory}/inference_{n_iter}_test"
+                    test_ckpt_iter = n_iter
+                    test_data_path = os.path.dirname(os.path.dirname(data_path))  # go up to the original data_path
+                    test_experiment_name = experiment_name
+                    print(f"[TEST] generate parameters: {ckpt_path}, {test_output_dir}, {test_ckpt_iter}, {test_data_path}, {test_experiment_name}")
+                    # Run inference to generate test samples
+                    inference_mod.generate(
+                        output_directory=test_output_dir,
+                        num_samples=batch_size,  # or a fixed number if desired
+                        ckpt_path=ckpt_path,
+                        data_path=test_data_path,
+                        ckpt_iter=test_ckpt_iter,
+                        experiment_name=test_experiment_name,
+                        inference_split="test"
+                    )
+                    # Import and run quick_eval
+                    try:
+                        from quick_eval import load_data_chunks, main_eval
+                        # Use the chunked data directory for generated data
+                        generated_data_dir = os.path.join(ckpt_path, f"synth_test_data_{test_ckpt_iter}")
+                        real_data_file = os.path.join(ckpt_path, f"synth_test_data_{test_ckpt_iter}", '..', 'real_data.npy')
+                        all_labels_file = os.path.join(ckpt_path, f"synth_test_data_{test_ckpt_iter}", '..', 'all_labels.npy')
+                        # Fallback: try to find the correct real/label files
+                        if not os.path.exists(real_data_file):
+                            real_data_file = os.path.join(ckpt_path, f"synth_test_data_{test_ckpt_iter}", 'real_data.npy')
+                        if not os.path.exists(all_labels_file):
+                            all_labels_file = os.path.join(ckpt_path, f"synth_test_data_{test_ckpt_iter}", 'all_labels.npy')
+                        if os.path.exists(generated_data_dir) and os.path.exists(real_data_file) and os.path.exists(all_labels_file):
+                            real_data = np.load(real_data_file)
+                            all_labels = np.load(all_labels_file)
+                            generated_data, generated_labels = load_data_chunks(generated_data_dir)
+                            min_size = min(generated_data.shape[0], real_data.shape[0])
+                            generated_data = generated_data[:min_size]
+                            generated_labels = generated_labels[:min_size]
+                            real_data = real_data[:min_size]
+                            all_labels = all_labels[:min_size]
+                            assert np.all(generated_labels == all_labels), "Labels do not match between generated and real data!"
+                            print(f"[TEST] Running main_eval on {min_size} test samples...")
+                            main_eval(real_data, generated_data, all_labels)
+                        else:
+                            print(f"[TEST] Skipping quick_eval: missing files or directories.\nGenerated: {generated_data_dir}\nReal: {real_data_file}\nLabels: {all_labels_file}")
+                    except Exception as e:
+                        print(f"[TEST] quick_eval failed: {e}")
+
+            n_iter += 1
 
 
 if __name__ == "__main__":

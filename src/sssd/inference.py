@@ -85,10 +85,13 @@ def generate(output_directory,
                                       automitically selects the maximum iteration if 'max' is selected
     data_path (str):                  path to dataset, numpy array.
     """
-    output_directory = "/home/zoeyhuang/output/test_checkpoints"
-    ckpt_path = "/home/zoeyhuang/output/test_checkpoints"
+    
+    # ======== uncomment if needed for testing ========
+    # output_directory = "/home/zoeyhuang/output/test_checkpoints"
+    # ckpt_path = "/home/zoeyhuang/output/test_checkpoints"
+    # inference_split = "val"
+    
     experiment_name = "SSSD_ECG_MIMIC_IV"
-    inference_split = "val"
     print("num_samples: ", num_samples)
     if num_samples!=400:
         warn(f"num_samples={num_samples} is not 400, generating less data")

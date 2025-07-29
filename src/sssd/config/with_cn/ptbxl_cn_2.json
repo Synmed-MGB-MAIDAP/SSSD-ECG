@@ -7,7 +7,7 @@
     "wavenet_config": {
         "in_channels": 8,
         "out_channels": 8,
-        "num_res_layers": 36,
+        "num_res_layers": 12,
         "res_channels": 256,
         "skip_channels": 256,
         "diffusion_step_embed_dim_in": 128,
@@ -19,13 +19,13 @@
         "s4_bidirectional": 1,
         "s4_layernorm": 1,
         "label_embed_dims": [
-            64
+            32
         ],
         "label_embed_classes": 15,
         "class_split": [
             [
-                29,
-                1564
+                15,
+                1550
             ]
         ],
         "embed_layer_types": [
@@ -33,11 +33,11 @@
         ]
     },
     "train_config": {
-        "data_path": "/home/shared/ptbxl_data_sssd-ecg/condition_all",
-        "output_directory": "/home/kumargirish/output_sssd-ecg/mimic_cn",
+        "data_path": "/home/kumargirish/data/ptbxl/processed/d_tog_15_cn",
+        "output_directory": "/home/kumargirish/output_sssd-ecg/ptbxl_cn_2",
         "ckpt_iter": "max",
         "iters_per_ckpt": 10000,
-        "iters_per_logging": 1000,
+        "iters_per_logging": 500,
         "n_iters": 200000,
         "learning_rate": 1e-3,
         "batch_size": 32
@@ -45,21 +45,22 @@
     "trainset_config": {
         "segment_length": 1000,
         "sampling_rate": 100,
-        "finetune_dataset": "mimic_iv",
-        "data_path": "/home/kumargirish/data/mimic/resampled_len_1000_with_text_embeddings",
+        "finetune_dataset": "ptbxl",
+        "loss_fn": "MSE",
+        "data_path": "/home/kumargirish/data/ptbxl/processed/d_tog_15_cn",
         "include_text_embeddings": 1
     },
     "gen_config": {
-        "output_directory": "/home/kumargirish/output_sssd-ecg/mimic_cn",
-        "ckpt_path": "/home/kumargirish/output_sssd-ecg/mimic_cn",
+        "output_directory": "/home/kumargirish/output_sssd-ecg/ptbxl_cn_2",
+        "ckpt_path": "/home/kumargirish/output_sssd-ecg/ptbxl_cn_2",
         "inference_split": "test"
     },
     "viz_split_config": {
-        "use_ptbxl": "False",
+        "use_ptbxl": "True",
         "ptbxl_data_path": "/home/kumargirish/data/ptbxl/processed/d_tog_15_cn"
     },
     "project_config": {
         "project_name": "SSSD-MIMIC-IV-ECG",
-        "experiment_name": "mimic_cn"
+        "experiment_name": "ptbxl_cn_2"
     }
 }

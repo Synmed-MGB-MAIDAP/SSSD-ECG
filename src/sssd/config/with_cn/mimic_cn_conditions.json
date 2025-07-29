@@ -52,7 +52,7 @@
         "segment_length": 1000,
         "sampling_rate": 100,
         "finetune_dataset": "mimic_iv",
-        "data_path": "/home/kumargirish/data/mimic/1.0",
+        "data_path": "/home/kumargirish/data/mimic/resampled_len_1000_with_text_embeddings",
         "include_text_embeddings": 1
     },
     "gen_config": {

@@ -9,6 +9,7 @@ from utils.util import find_max_epoch, print_size, sampling_label, calc_diffusio
 import matplotlib.pyplot as plt
 import wandb
 from warnings import warn
+from tqdm.auto import tqdm
 
 def generate_four_leads(tensor):
     leadI = tensor[:,0,:].unsqueeze(1)
@@ -90,8 +91,8 @@ def generate(output_directory,
     # output_directory = "/home/zoeyhuang/output/test_checkpoints"
     # ckpt_path = "/home/zoeyhuang/output/test_checkpoints"
     # inference_split = "val"
+    # experiment_name = "SSSD_ECG_MIMIC_IV"
     
-    experiment_name = "SSSD_ECG_MIMIC_IV"
     print("num_samples: ", num_samples)
     if num_samples!=400:
         warn(f"num_samples={num_samples} is not 400, generating less data")
@@ -100,7 +101,7 @@ def generate(output_directory,
     local_path = "{}/ch{}_T{}_betaT{}".format(experiment_name, model_config["res_channels"], 
                                            diffusion_config["T"], 
                                            diffusion_config["beta_T"])
-    local_path = experiment_name
+    # local_path = experiment_name
     # Get shared output_directory ready
     output_directory = os.path.join(output_directory, local_path)
     if not os.path.isdir(output_directory):
@@ -202,7 +203,13 @@ def generate(output_directory,
         }
     )
     
-    for i, label in enumerate(chunks):
+    # print("===================================")
+    # print("Class split")
+    # print(net.class_split)
+    # print(net.embed_layer_types)
+    # print("===================================")
+    
+    for i, label in tqdm(enumerate(chunks), desc="Processing chunks"):
         print(f"Processing chunk {i+1}/{len(chunks)}")
         cond = torch.from_numpy(label).cuda().float()
 
@@ -314,7 +321,7 @@ if __name__ == "__main__":
                         help='JSON file for configuration')
     parser.add_argument('-ckpt_iter', '--ckpt_iter', default=10000,
                         help='Which checkpoint to use; assign a number or "max"')
-    parser.add_argument('-n', '--num_samples', type=int, default=4,
+    parser.add_argument('-n', '--num_samples', type=int, default=400,
                         help='Number of utterances to be generated')
     args = parser.parse_args()
 

@@ -98,14 +98,14 @@ def generate(output_directory,
     random.seed(seed)
 
 
-    output_directory = "/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16/condition_mimic_15_lr_6e-4_bs16_eval_mimic_2/ch256_T200_betaT0.02/val_during_train_data0"
+    # output_directory = "/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16/condition_mimic_15_lr_6e-4_bs16_eval_mimic_2/ch256_T200_betaT0.02/val_during_train_data0"
     # ckpt_path = "/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16/condition_mimic_15_lr_6e-4_bs16_eval_mimic_2/ch256_T200_betaT0.02/val_during_train_data0"
-    ckpt_path = '/home/zoeyhuang/output/test_checkpoints/SSSD_ECG_MIMIC_IV'
-    experiment_name = ""
-    inference_split = "val"
+    # ckpt_path = '/home/zoeyhuang/output/test_checkpoints/SSSD_ECG_MIMIC_IV'
+    # experiment_name = ""
+    # inference_split = "val"
     # trainset_config["finetune_dataset"] = "ptbxl_all"
     chunks_size = 400  # Number of samples per chunk
-    print("num_samples: ", num_samples)
+    # print("num_samples: ", num_samples)
 
     # Initialize wandb for visualization
     wandb.init(project="sssd-ecg-inference", name=f"{experiment_name}_inference_{ckpt_iter}")
@@ -170,7 +170,7 @@ def generate(output_directory,
         
         # break down labels into chunks
         chunks = []
-        for i in range(0, len(labels), chunks_sizes):
+        for i in range(0, len(labels), chunks_size):
             if i + chunks_size <= len(labels):
                 chunks.append(labels[i:i+chunks_size])
             else:
@@ -354,8 +354,6 @@ if __name__ == "__main__":
     print(config)
 
     gen_config = config['gen_config']
-    train_config = config["train_config"]  # training parameters
-    global trainset_config
     trainset_config = config["trainset_config"]  # to load trainset
     global diffusion_config
     diffusion_config = config["diffusion_config"]  # basic hyperparameters

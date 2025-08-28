@@ -746,11 +746,8 @@ def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, chann
         df_ptb_xl["label_sex"] = df_ptb_xl["sex"].apply(lambda x: [x])
         df_ptb_xl["label_weight"] = df_ptb_xl["weight"].apply(lambda x: [_weight_to_categorical_interpolate(x, weight_threshold)])
         df_ptb_xl["label_height"] = df_ptb_xl["height"].apply(lambda x: [_height_to_categorical_interpolate(x, height_threshold)])
-        # df_ptb_xl["label_hr"] = df_ptb_xl["heart_rate"].apply(lambda x: [_hr_to_categorical_interpolate(x)])
         if thresholds and "15" in thresholds:
-            df_ptb_xl["label_15"] = df_ptb_xl["label_all"].apply(lambda x: one_hot_to_str(relabel_71_to_15(np.array([str_to_one_hot("-".join(x), new_label_order)]), labels_15, new_label_order), label_15).split("-"))
-            # df_ptb_xl["label_hr"] = df_ptb_xl["filename_hr"]
-            # print(df_ptb_xl["label_hr"].value_counts())
+            df_ptb_xl["label_15"] = df_ptb_xl["label_all"].apply(labels71_to_labels15_shortnames)
 
         df_ptb_xl["dataset"]="ptb_xl_demographics"
         #filter and map (can be reapplied at any time)
@@ -770,7 +767,7 @@ def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, chann
             np.save(target_root_ptb_xl/(filename.stem+".npy"),data)
             filenames.append(Path(filename.stem+".npy"))
             iter += 1
-            # if iter > 1000:
+            # if iter > 100:
             #     break
         df_ptb_xl = df_ptb_xl[:iter]
         df_ptb_xl["data"] = filenames

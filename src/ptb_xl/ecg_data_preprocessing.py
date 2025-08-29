@@ -12,8 +12,8 @@ from sssd.utils.demographics_mapping import map_heartrate
 threshold_version = "condition_15_demographic"
 
 target_fs=100 # sampling rate (100 Hz or 500 Hz)
-data_folder_ptb_xl = Path("/home/shared/physionet.org/files/ptb-xl/1.0.3")
-target_folder_ptb_xl = Path(f"/home/shared/ptbxl_data_sssd-ecg/{threshold_version}") 
+data_folder_ptb_xl = Path("/home/shared/data/ptbxl/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.3")
+target_folder_ptb_xl = Path(f"/home/shared/zoey_data/ptbxl/{threshold_version}") 
 
 # v1 rough thresholds 90
 thresholds_v1 = {

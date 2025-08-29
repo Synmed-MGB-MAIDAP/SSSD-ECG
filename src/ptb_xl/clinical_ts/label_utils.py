@@ -102,7 +102,7 @@ GROUP_INDEXES_IN_71 = _build_group_index_map(labels_15, new_label_order)
 def relabel_71_to_15(onehot_71: np.ndarray) -> np.ndarray:
     """
     Fold a (K=71) multi-hot vector into (15).
-    Supports (71,) or (1,71) input; returns (15,).
+    Supports (71,) or (X,71) input; returns (15,).
     Rule: if any label in a group is 1, the group is 1.
     """
     if onehot_71.ndim == 2:
@@ -116,6 +116,39 @@ def relabel_71_to_15(onehot_71: np.ndarray) -> np.ndarray:
         if np.any(vec[idxs] == 1):
             out[i] = 1
     return out
+
+def relabel_71_to_15_batch(one_hot_labels_71, labels_15, new_label_order):
+    """
+    Converts 71 one-hot encoded labels into 15 one-hot encoded labels.
+    
+    Args:
+        one_hot_labels_71 (np.ndarray): Array of shape (2000, 71), where each row represents a one-hot encoding of 71 labels.
+        labels_15 (list): A list of lists mapping 15 labels to corresponding 71-labels.
+        new_label_order (list): A list defining the order of the 71 labels.
+        
+    Returns:
+        np.ndarray: A (2000, 15) one-hot encoded label array.
+    """
+    # print(one_hot_labels_71.shape)
+    num_samples = one_hot_labels_71.shape[0]
+    num_new_labels = len(labels_15)
+    
+    # Initialize new one-hot labels array (2000, 15)
+    one_hot_labels_15 = np.zeros((num_samples, num_new_labels), dtype=int)
+
+    # Create a mapping from old labels to their indices
+    label_to_index = {label: i for i, label in enumerate(new_label_order)}
+
+    # Iterate through each sample
+    for i in range(num_samples):
+        for new_label_idx, label_group in enumerate(labels_15):
+            for label in label_group:
+                if label in label_to_index:
+                    old_index = label_to_index[label]
+                    if one_hot_labels_71[i, old_index] == 1:
+                        one_hot_labels_15[i, new_label_idx] = 1
+
+    return one_hot_labels_15
 
 # === End-to-end: from original 71-label list → 15 shortname list ===
 

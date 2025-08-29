@@ -17,6 +17,7 @@ import pdb
 import sys
 import importlib
 import os
+from tqdm import tqdm
 
 def train(output_directory,
           ckpt_iter,
@@ -30,7 +31,8 @@ def train(output_directory,
          project_name,
          experiment_name,
          use_ptbxl,
-         ptbxl_data_path):
+         ptbxl_data_path,
+         debug=True):
   
     """
     Train Diffusion Models
@@ -185,13 +187,20 @@ def train(output_directory,
         "iters_per_logging": iters_per_logging,
     }
     print(f"[INFO] wandb config: {wandb.config}")
+    
     # training
     n_iter = ckpt_iter + 1
     print(f"[INFO] Starting training loop from iteration {n_iter} to {n_iters}")
     
-    while n_iter < n_iters + 1:
-        
-        for audio, label in trainloader:
+    # Initialize tqdm progress bar
+    pbar = tqdm(range(n_iter, n_iters + 1), 
+                initial=n_iter - (ckpt_iter + 1), 
+                total=n_iters - (ckpt_iter + 1),
+                desc="Training",
+                unit="iter")
+    
+    for n_iter in pbar:
+        for i, (audio, label) in enumerate(trainloader):
             audio = torch.index_select(audio, 1, index_8).float().cuda()
             label = label.float().cuda()
             
@@ -205,6 +214,11 @@ def train(output_directory,
             loss.backward()
             optimizer.step()
             # scheduler.step()
+            if debug and i>10:
+                break
+        
+        # Update progress bar description with current loss
+        pbar.set_postfix({'loss': f'{loss.item():.6f}'})
         
         if n_iter % iters_per_logging == 0:
         # if True:
@@ -214,14 +228,16 @@ def train(output_directory,
             # wandb.log({"learning_rate": current_lr, "iteration": n_iter})
             # --- EVALUATION STEP ---
             print("[EVAL] Evaluating model at iteration {}".format(n_iter))
-            val_loss = evaluate_model(net, valloader, index_8, diffusion_hyperparams)
+            val_loss = evaluate_model(net, valloader, index_8, diffusion_hyperparams, trainset_config['loss_fn'], debug)
             print(f"[VAL] iteration: {n_iter} \tval_loss: {val_loss}")
             wandb.log({"iteration": n_iter, "val_loss": val_loss})
-        
-        if n_iter % (iters_per_logging*10) == 0:
+            # Update progress bar with validation loss
+            pbar.set_postfix({'loss': f'{loss.item():.6f}', 'val_loss': f'{val_loss:.6f}'})
+
+        if not debug and n_iter % (iters_per_logging*10) == 0:
             # --- ECG PLOTTING AND LOGGING ---
             # Choose visualization data based on configuration
-            print(f"[VIZ] viz_split_config: {viz_split_config}")
+            print(f"\n[VIZ] viz_split_config: {viz_split_config}")
             if viz_split_config['use_ptbxl']:
                 print("[VIZ] Using PTBXL validation split for visualization.")
                 # Use PTBXL validation split regardless of training dataset
@@ -247,6 +263,8 @@ def train(output_directory,
             for i, (real_audio, real_label) in enumerate(fixed_batches):
                 print(f"[VIZ] Generating ECG comparison for sample {i} at iteration {n_iter}")
                 # pdb.set_trace()
+                if debug and i>2:
+                    break
                 real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
                 real_label = real_label.float().cuda()
                 # Generate synthetic ECGs with the same label
@@ -266,31 +284,31 @@ def train(output_directory,
                 save_dir = os.path.join(output_directory, "val_during_train_data{}".format(n_iter))
                 if not os.path.exists(save_dir):
                     os.makedirs(save_dir)
-                np.save(os.path.join(save_dir, f"real_audio_{n_iter}_{i}.npy"), real_audio.cpu().numpy())
-                np.save(os.path.join(save_dir, f"real_label_{n_iter}_{i}.npy"), real_label.cpu().numpy())
-                np.save(os.path.join(save_dir, f"synth_audio_{n_iter}_{i}.npy"), synth_audio12_np)
-                torch.save({'model_state_dict': net.state_dict(),
-                        'optimizer_state_dict': optimizer.state_dict()},
-                        os.path.join(save_dir, "sssd_ecg_model.pkl"))
-                # save diffusion hyperparameters
-                torch.save(diffusion_hyperparams, os.path.join(save_dir, "diffusion_hyperparams.pt"))
+                # np.save(os.path.join(save_dir, f"real_audio_{n_iter}_{i}.npy"), real_audio.cpu().numpy())
+                # np.save(os.path.join(save_dir, f"real_label_{n_iter}_{i}.npy"), real_label.cpu().numpy())
+                # np.save(os.path.join(save_dir, f"synth_audio_{n_iter}_{i}.npy"), synth_audio12_np)
+                # torch.save({'model_state_dict': net.state_dict(),
+                #         'optimizer_state_dict': optimizer.state_dict()},
+                #         os.path.join(save_dir, "sssd_ecg_model.pkl"))
+                # # save diffusion hyperparameters
+                # torch.save(diffusion_hyperparams, os.path.join(save_dir, "diffusion_hyperparams.pt"))
                 fig = plot_ecg_comparison(
                     real_audio_np[0],
                     synth_audio12_np[0],
                     label=f"iter{n_iter}_sample{i}",
                     return_fig=True
                 )
-                # save the figure
-                fig.savefig(os.path.join(save_dir, f"ecg_comparison_{n_iter}_{i}.png"))
-                # Log the figure to W&B
-                ecg_figs.append(wandb.Image(fig, caption=f"iter{n_iter}_sample{i}"))
+                # # save the figure
+                # fig.savefig(os.path.join(save_dir, f"ecg_comparison_{n_iter}_{i}.png"))
+                # # Log the figure to W&B
+                # ecg_figs.append(wandb.Image(fig, caption=f"iter{n_iter}_sample{i}"))
             # Log all images as a list
             wandb.log({"ecg_comparisons": ecg_figs, "iteration": n_iter})
 
         # save checkpoint
         if n_iter > 0 and n_iter % iters_per_ckpt == 0:
             checkpoint_name = '{}.pkl'.format(n_iter)
-            print(f"[CHECKPOINT] Saving checkpoint: {checkpoint_name}")
+            print(f"\n[CHECKPOINT] Saving checkpoint: {checkpoint_name}")
             torch.save({'model_state_dict': net.state_dict(),
                         'optimizer_state_dict': optimizer.state_dict()},
                         os.path.join(output_directory, checkpoint_name))
@@ -301,7 +319,7 @@ def train(output_directory,
             wandb.log({"checkpoint_saved": n_iter})
             
             # if n_iter % iters_per_test == 0:
-            if False:
+            if debug:
                 # pdb.set_trace()
                 print(f"[TEST] Running inference and evaluation at iteration {n_iter}")
                 # Add inference and evals/sssd_eval to sys.path if not already present
@@ -358,13 +376,15 @@ def train(output_directory,
                         print(f"[TEST] Skipping quick_eval: missing files or directories.\nGenerated: {generated_data_dir}\nReal: {real_data_file}\nLabels: {all_labels_file}")
                 except Exception as e:
                     print(f"[TEST] quick_eval failed: {e}")
-
-        n_iter += 1
+    
+    # Close the progress bar
+    pbar.close()
+    
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='config/SSSD_ECG_demographic_cond_interpolate_15_onehot_mimic_hypertuned_disease.json',
+    parser.add_argument('-c', '--config', type=str, default='/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD_ECG_interpolate_15_ptbxl.json',
                         help='JSON file for configuration')
 
     args = parser.parse_args()
@@ -408,7 +428,7 @@ if __name__ == "__main__":
 
     # Add visualization split configuration
     global viz_split_config
-    viz_split_config = config.get('viz_split_config', {'use_ptbxl': True, "ptbxl_data_path": "/home/shared/ptbxl_data_sssd-ecg/condition_mimic_15"})  # Default to PTBXL if not specified
+    viz_split_config = config.get('viz_split_config', {'use_ptbxl': True, "ptbxl_data_path": "/home/shared/zoey_data/ptbxl/condition_15_demographic_v1"})  # Default to PTBXL if not specified
     print(f"[INFO] viz_split_config: {viz_split_config}")
 
     train(**train_config, **project_config, **viz_split_config)

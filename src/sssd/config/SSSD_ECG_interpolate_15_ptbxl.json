@@ -29,9 +29,9 @@
         "iters_per_ckpt": 4000,
         "iters_per_logging": 100,
         "iters_per_test": 50000,
-        "n_iters": 1,
-        "learning_rate": 2e-4,
-        "batch_size":32
+        "n_iters": 100000,
+        "learning_rate": 3e-4,
+        "batch_size":16
     },
     "trainset_config":{
         "segment_length":1000,

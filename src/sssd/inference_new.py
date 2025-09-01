@@ -114,7 +114,7 @@ def generate(output_directory,
     local_path = "{}/ch{}_T{}_betaT{}".format(experiment_name, model_config["res_channels"], 
                                            diffusion_config["T"], 
                                            diffusion_config["beta_T"])
-    local_path = experiment_name
+    # local_path = experiment_name
     # Get shared output_directory ready
     output_directory = os.path.join(output_directory, local_path)
     if not os.path.isdir(output_directory):
@@ -135,9 +135,9 @@ def generate(output_directory,
     ckpt_path = os.path.join(ckpt_path, local_path)
     if ckpt_iter == 'max':
         ckpt_iter = find_max_epoch(ckpt_path)
-    #model_path = os.path.join(ckpt_path, '{}.pkl'.format(ckpt_iter))
+    model_path = os.path.join(ckpt_path, '{}.pkl'.format(ckpt_iter))
     #model_path = os.path.join(ckpt_path, 'sssd_ecg_model.pth')
-    model_path = os.path.join(ckpt_path, '100000.pkl')
+    # model_path = os.path.join(ckpt_path, '100000.pkl')
     # pdb.set_trace()
 
     try:
@@ -154,7 +154,7 @@ def generate(output_directory,
     index_4 = torch.tensor([1,8,9,10])
 
     # Load data based on dataset type
-    if trainset_config["finetune_dataset"] == "ptbxl_all":
+    if trainset_config["finetune_dataset"] == "ptbxl":
         print("Loading PTBXL dataset")
         label_path = os.path.join(data_path, 'labels')
         data_path = os.path.join(data_path, 'data')
@@ -220,89 +220,90 @@ def generate(output_directory,
     # Create directory for intermediate plots
     plot_dir = os.path.join(ckpt_path, f"synth_{inference_split}_plots")
     os.makedirs(plot_dir, exist_ok=True)
-    
-    for i, label in enumerate(chunks):
-        print(f"Processing chunk {i+1}/{len(chunks)}")
-        cond = torch.from_numpy(label).cuda().float()
 
-        # inference
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        start.record()
+    with torch.no_grad():
+        for i, label in enumerate(chunks):
+            print(f"Processing chunk {i+1}/{len(chunks)}")
+            cond = torch.from_numpy(label).cuda().float()
 
-        # Get corresponding real data for this chunk
-        start_idx = i * chunks_size
-        end_idx = min(start_idx + num_samples, len(real_data))
-        chunk_real_data = real_data[start_idx:end_idx,:]
-        cond = cond[:num_samples, :]
+            # inference
+            start = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+            start.record()
 
-        real_audio = torch.from_numpy(chunk_real_data).float()
-        real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
-        
-        print(f"Generating {num_samples} samples for chunk {i}")
+            # Get corresponding real data for this chunk
+            start_idx = i * chunks_size
+            end_idx = min(start_idx + num_samples, len(real_data))
+            chunk_real_data = real_data[start_idx:end_idx,:]
+            cond = cond[:num_samples, :]
 
-        # sanity check
-        real_audio = np.load("/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16/condition_mimic_15_lr_6e-4_bs16_eval_mimic_2/ch256_T200_betaT0.02/val_during_train_data0/real_audio_0_0.npy")
-        real_audio = torch.from_numpy(real_audio).float()
-        real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
-        cond = np.load("/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16/condition_mimic_15_lr_6e-4_bs16_eval_mimic_2/ch256_T200_betaT0.02/val_during_train_data0/real_label_0_0.npy")
-        cond = torch.from_numpy(cond).float()
-        # print("real_audio shape: ", real_audio8.shape)
-        # print("cond shape: ", cond.shape)
-        pdb.set_trace()
-        # Generate with the appropriate signal length
-        generated_audio = sampling_label(net, real_audio8.shape, 
-                               diffusion_hyperparams,
-                               cond=cond)
-        
-        # Generate 12 leads
-        generated_audio12 = generate_four_leads(generated_audio)
+            real_audio = torch.from_numpy(chunk_real_data).float()
+            real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
+            
+            print(f"Generating {num_samples} samples for chunk {i}")
 
-        end.record()
-        torch.cuda.synchronize()
-        print(f'Generated {num_samples} samples in {int(start.elapsed_time(end)/1000)} seconds')
-        
-        # Plot intermediate results
-        plot_signal_pairs(
-            real_audio.detach().cpu().numpy(),
-            generated_audio12.detach().cpu().numpy(),
-            plot_dir,
-            i,
-            num_samples=len(real_audio)  # Plot 5 random samples per chunk
-        )
-        
-        # Log some samples to wandb
-        if i % 2 == 0:  # Log every other chunk to avoid too many plots
-            for j in range(min(3, len(chunk_real_data))):
-                fig = plot_ecg_comparison(
-                    chunk_real_data[j],
-                    generated_audio12[j].detach().cpu().numpy(),
-                    label=f"chunk{i}_sample{j}",
-                    return_fig=True
-                )
-                wandb.log({
-                    f"chunk{i}_sample{j}": wandb.Image(fig),
-                    "chunk": i,
-                    "sample": j
-                })
-                plt.close(fig)
+            # sanity check
+            # real_audio = np.load("/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16/condition_mimic_15_lr_6e-4_bs16_eval_mimic_2/ch256_T200_betaT0.02/val_during_train_data0/real_audio_0_0.npy")
+            # real_audio = torch.from_numpy(real_audio).float()
+            # real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
+            # cond = np.load("/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16/condition_mimic_15_lr_6e-4_bs16_eval_mimic_2/ch256_T200_betaT0.02/val_during_train_data0/real_label_0_0.npy")
+            # cond = torch.from_numpy(cond).float()
+            # print("real_audio shape: ", real_audio8.shape)
+            # print("cond shape: ", cond.shape)
+            # pdb.set_trace()
+            # Generate with the appropriate signal length
+            generated_audio = sampling_label(net, real_audio8.shape, 
+                                diffusion_hyperparams,
+                                cond=cond)
+            
+            # Generate 12 leads
+            generated_audio12 = generate_four_leads(generated_audio)
 
-        # Save chunk results
-        all_generated.append(generated_audio12.detach().cpu().numpy())
-        all_labels.append(cond.detach().cpu().numpy())
-        real_data_inferenced.append(real_audio.detach().cpu().numpy())
+            end.record()
+            torch.cuda.synchronize()
+            print(f'Generated {num_samples} samples in {int(start.elapsed_time(end)/1000)} seconds')
         
-        # Save intermediate results
-        outfile = f'{i}_samples.npy'
-        synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_{ckpt_iter}")
-        if not os.path.exists(synth_data_path):
-            os.makedirs(synth_data_path)
-        new_out = os.path.join(synth_data_path, outfile)
-        np.save(new_out, generated_audio12.detach().cpu().numpy())
+            # Plot intermediate results
+            plot_signal_pairs(
+                real_audio.detach().cpu().numpy(),
+                generated_audio12.detach().cpu().numpy(),
+                plot_dir,
+                i,
+                num_samples=len(real_audio)  # Plot 5 random samples per chunk
+            )
         
-        outfile = f'{i}_labels.npy'
-        new_out = os.path.join(synth_data_path, outfile)
-        np.save(new_out, cond.detach().cpu().numpy())
+            # Log some samples to wandb
+            if i % 2 == 0:  # Log every other chunk to avoid too many plots
+                for j in range(min(3, len(chunk_real_data))):
+                    fig = plot_ecg_comparison(
+                        chunk_real_data[j],
+                        generated_audio12[j].detach().cpu().numpy(),
+                        label=f"chunk{i}_sample{j}",
+                        return_fig=True
+                    )
+                    wandb.log({
+                        f"chunk{i}_sample{j}": wandb.Image(fig),
+                        "chunk": i,
+                        "sample": j
+                    })
+                    plt.close(fig)
+
+            # Save chunk results
+            all_generated.append(generated_audio12.detach().cpu().numpy())
+            all_labels.append(cond.detach().cpu().numpy())
+            real_data_inferenced.append(real_audio.detach().cpu().numpy())
+        
+            # Save intermediate results
+            outfile = f'{i}_samples.npy'
+            synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_{ckpt_iter}")
+            if not os.path.exists(synth_data_path):
+                os.makedirs(synth_data_path)
+            new_out = os.path.join(synth_data_path, outfile)
+            np.save(new_out, generated_audio12.detach().cpu().numpy())
+            
+            outfile = f'{i}_labels.npy'
+            new_out = os.path.join(synth_data_path, outfile)
+            np.save(new_out, cond.detach().cpu().numpy())
 
     # Combine all chunks
     all_generated = np.concatenate(all_generated, axis=0)
@@ -339,11 +340,11 @@ def generate(output_directory,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD_ECG_demographic_cond_interpolate_15_onehot_mimic_hypertuned_inf_mimic.json',
+    parser.add_argument('-c', '--config', type=str, default='/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD_ECG_interpolate_15_ptbxl_inf.json',
                         help='JSON file for configuration')
-    parser.add_argument('-ckpt_iter', '--ckpt_iter', default=10000,
+    parser.add_argument('-ckpt_iter', '--ckpt_iter', default="max",
                         help='Which checkpoint to use; assign a number or "max"')
-    parser.add_argument('-n', '--num_samples', type=int, default=50,
+    parser.add_argument('-n', '--num_samples', type=int, default=400,
                         help='Number of utterances to be generated')
     args = parser.parse_args()
 

@@ -32,7 +32,7 @@ def train(output_directory,
          experiment_name,
          use_ptbxl,
          ptbxl_data_path,
-         debug=True):
+         debug=False):
   
     """
     Train Diffusion Models
@@ -234,7 +234,7 @@ def train(output_directory,
             # Update progress bar with validation loss
             pbar.set_postfix({'loss': f'{loss.item():.6f}', 'val_loss': f'{val_loss:.6f}'})
 
-        if not debug and n_iter % (iters_per_logging*10) == 0:
+        if debug and n_iter % (iters_per_logging*10) == 0:
             # --- ECG PLOTTING AND LOGGING ---
             # Choose visualization data based on configuration
             print(f"\n[VIZ] viz_split_config: {viz_split_config}")

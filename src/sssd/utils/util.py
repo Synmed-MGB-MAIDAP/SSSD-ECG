@@ -9,6 +9,9 @@ import matplotlib.pyplot as plt
 
 from wavetools.core.ecg_signal import ECGSignal
 
+
+
+
 def flatten(v):
     """
     Flatten a list of lists/tuples
@@ -181,6 +184,10 @@ def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
     _dh = diffusion_hyperparams
     T, Alpha_bar,Alpha,Sigma = _dh["T"], _dh["Alpha_bar"], _dh["Alpha"], _dh["Sigma"]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # mel_loss = MelSpectrogramLoss(window_lengths=[32, 64], n_mels=[10, 40], loss_fn=torch.nn.L1Loss()).to(device) #run 5
+    mel_loss = MelSpectrogramLoss(window_lengths=[64], n_mels=[16], loss_fn=torch.nn.L1Loss()).to(device) #we can put window size  of 64 and n_mels = 16 #run6
+
+
     audio = X[0]
     label = X[1]
     B, C, L = audio.shape  # B is batchsize, C=1, L is audio length, C=8?

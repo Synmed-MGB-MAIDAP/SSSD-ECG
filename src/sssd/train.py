@@ -1,4 +1,5 @@
 import os
+import ecg_plot
 import argparse
 import json
 import numpy as np
@@ -18,6 +19,14 @@ import sys
 import importlib
 import os
 from tqdm import tqdm
+
+
+
+def plot_ecg(signal, filepath):
+    signal = signal.numpy()[0]
+    ecg_plot.plot(signal, sample_rate = 100)
+    plt.savefig(filepath, format="jpeg")
+
 
 def train(output_directory,
           ckpt_iter,

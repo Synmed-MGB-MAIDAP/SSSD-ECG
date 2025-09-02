@@ -319,7 +319,7 @@ def train(output_directory,
             wandb.log({"checkpoint_saved": n_iter})
             
             # if n_iter % iters_per_test == 0:
-            if debug:
+            if False:
                 # pdb.set_trace()
                 print(f"[TEST] Running inference and evaluation at iteration {n_iter}")
                 # Add inference and evals/sssd_eval to sys.path if not already present

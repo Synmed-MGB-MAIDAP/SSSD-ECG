@@ -217,9 +217,18 @@ def train(output_directory,
             optimizer.zero_grad()
             
             X = audio, label
+
+            if train_config['loss_fn'] == 'mel_loss':
+                loss, mel, mse, orig_x_signal, reconstructed_x_signal = training_loss_label(net, torch.nn.MSELoss(), X, diffusion_hyperparams)
+                wandb.log({'training loss': loss.item(), 'iteration': n_iter})
+                wandb.log({'mel loss': mel.item(), 'iteration': n_iter})
+                wandb.log({'mse loss': mse.item(), 'iteration': n_iter})
+                wandb.log({'original_x_signal': wandb.Audio(orig_x_signal, caption="original_x_signal", sample_rate=100, max_frames=300000), 'iteration': n_iter})
+                wandb.log({'reconstructed_x_signal': wandb.Audio(reconstructed_x_signal, caption="reconstructed_x_signal", sample_rate=100, max_frames=300000), 'iteration': n_iter})
+            else:
+                loss = training_loss_label(net, trainset_config['loss_fn'], X, diffusion_hyperparams)
+                wandb.log({'training loss': loss.item(), 'iteration': n_iter})
             
-            loss = training_loss_label(net, trainset_config['loss_fn'], X, diffusion_hyperparams)
-            wandb.log({'training loss': loss.item(), 'iteration': n_iter})
             loss.backward()
             optimizer.step()
             # scheduler.step()
@@ -312,6 +321,15 @@ def train(output_directory,
                 # # Log the figure to W&B
                 # ecg_figs.append(wandb.Image(fig, caption=f"iter{n_iter}_sample{i}"))
             # Log all images as a list
+            if train_config['loss_fn'] == "mel_loss":
+                original_x_path = Path.home() / f'MGB-MAIDAP/models/SSSD-ECG/signal_plot/original_x_{n_iter}_{loss.item()}.jpg'
+                reconstructed_x_path = Path.home() / f'MGB-MAIDAP/models/SSSD-ECG/signal_plot/recontructed_x_{n_iter}_{loss.item()}.jpg'
+                plot_ecg(orig_x_signal, original_x_path)
+                plot_ecg(reconstructed_x_signal, reconstructed_x_path)
+
+                orig_x_im = plt.imread(original_x_path)
+                recon_x_im = plt.imread(reconstructed_x_path)
+                
             wandb.log({"ecg_comparisons": ecg_figs, "iteration": n_iter})
 
         # save checkpoint

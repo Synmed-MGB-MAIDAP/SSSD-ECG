@@ -201,17 +201,20 @@ def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
         mel_loss = MelSpectrogramLoss(window_lengths=[512, 256], n_mels=[64, 128], loss_fn=torch.nn.L1Loss()).to(device)  
 
         #reconstructing x
-        reconstructed_x = (transformed_X - (1-Alpha[T-1])/torch.sqrt(1-Alpha_bar[T-1]) * epsilon_theta) / torch.sqrt(Alpha[T-1])
+        reconstructed_x = (transformed_X - (1-Alpha[diffusion_steps])/torch.sqrt(1-Alpha_bar[diffusion_steps]) * epsilon_theta) / torch.sqrt(Alpha[diffusion_steps])
 
         #calculate mel loss
         orig_x_signal = ECGSignal(audio, sample_rate = 100)
         reconstructed_x_signal = ECGSignal(reconstructed_x, sample_rate = 100)
         mel_loss_calc = mel_loss(reconstructed_x_signal,orig_x_signal)
-        loss = mse_loss_fn(epsilon_theta, z) + mel_loss_calc*0.2
+        loss = mse_loss_fn(epsilon_theta, z) + mel_loss_calc*0.02
+
+        return loss, mel_loss_calc, mse_loss_fn(epsilon_theta, z),orig_x_signal,reconstructed_x_signal #run6
+
     else:
         loss = mse_loss_fn(epsilon_theta, z)
     
-    return loss
+        return loss
 
 def plot_ecg_comparison(real_data, synth_data, label, lead_names=None, return_fig=False):
     """

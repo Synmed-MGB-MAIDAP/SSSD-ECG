@@ -5,6 +5,7 @@ import torch
 import random
 from wavetools.core import ECGSignal
 from wavetools.metrics.spectral import  MelSpectrogramLoss
+import matplotlib.pyplot as plt
 
 from wavetools.core.ecg_signal import ECGSignal
 
@@ -199,17 +200,65 @@ def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
     if loss_fn == "mel_loss":
         mel_loss = MelSpectrogramLoss(window_lengths=[512, 256], n_mels=[64, 128], loss_fn=torch.nn.L1Loss()).to(device)  
 
-    #reconstructing x
-    # reconstructed_x = (transformed_X - (1-Alpha[diffusion_steps])/torch.sqrt(1-Alpha_bar[diffusion_steps]) * epsilon_theta) / torch.sqrt(Alpha[diffusion_steps])
-    reconstructed_x = (transformed_X - (1-Alpha[diffusion_steps])/torch.sqrt(1-Alpha_bar[diffusion_steps]) * epsilon_theta) / torch.sqrt(Alpha[diffusion_steps])
- 
-    #calculate mel loss
-    orig_x_signal = ECGSignal(audio, sample_rate = 100)
-    reconstructed_x_signal = ECGSignal(reconstructed_x, sample_rate = 100)
-    mel_loss_calc = mel_loss(reconstructed_x_signal,orig_x_signal)
-    print("loss", mel_loss_calc)
-    print("mse loss", loss_fn(epsilon_theta, z))
+        #reconstructing x
+        reconstructed_x = (transformed_X - (1-Alpha[diffusion_steps])/torch.sqrt(1-Alpha_bar[diffusion_steps]) * epsilon_theta) / torch.sqrt(Alpha[diffusion_steps])
 
-    # return loss_fn(epsilon_theta, z) +  mel_loss_calc*0.2, mel_loss_calc, loss_fn(epsilon_theta, z),orig_x_signal,reconstructed_x_signal #run5
-    return loss_fn(epsilon_theta, z) +  mel_loss_calc*0.02, mel_loss_calc, loss_fn(epsilon_theta, z),orig_x_signal,reconstructed_x_signal #run6
+        #calculate mel loss
+        orig_x_signal = ECGSignal(audio, sample_rate = 100)
+        reconstructed_x_signal = ECGSignal(reconstructed_x, sample_rate = 100)
+        mel_loss_calc = mel_loss(reconstructed_x_signal,orig_x_signal)
+        loss = mse_loss_fn(epsilon_theta, z) + mel_loss_calc*0.02
 
+        return loss, mel_loss_calc, mse_loss_fn(epsilon_theta, z),orig_x_signal,reconstructed_x_signal #run6
+
+    else:
+        loss = mse_loss_fn(epsilon_theta, z)
+    
+        return loss
+
+def plot_ecg_comparison(real_data, synth_data, label, lead_names=None, return_fig=False):
+    """
+    Plots side-by-side ECG comparisons for real and synthetic data.
+
+    Parameters:
+    - real_data: np.array or list, shape (12, time_points), Real ECG signal data.
+    - synth_data: np.array or list, shape (12, time_points), Synthetic ECG signal data.
+    - label: str, title of the plot.
+    - lead_names: list of str (optional), names of the 12 leads.
+    - return_fig: bool, if True returns the matplotlib figure object instead of saving.
+    """
+    if lead_names is None:
+        lead_names = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
+
+    fig, axes = plt.subplots(12, 2, figsize=(25, 15), sharex=True, sharey=True)
+
+    for i in range(12):
+        # Plot real_data on the left
+        axes[i, 0].plot(real_data[i])
+        axes[i, 0].set_ylabel(lead_names[i], fontsize=10, fontweight='bold')
+        axes[i, 0].set_yticks([])  # Remove y-axis ticks for clarity
+        axes[i, 0].set_xticks([]) if i < 11 else axes[i, 0].set_xlabel("Time (ms)")
+
+        # Plot synth_data on the right
+        axes[i, 1].plot(synth_data[i])
+        axes[i, 1].set_yticks([])  # Remove y-axis ticks
+        axes[i, 1].set_xticks([]) if i < 11 else axes[i, 1].set_xlabel("Time (ms)")
+
+    # Titles for columns
+    axes[0, 0].set_title("Real Data", fontsize=12, fontweight='bold')
+    axes[0, 1].set_title("Synthetic Data", fontsize=12, fontweight='bold')
+
+    # Add main title
+    plt.suptitle(label, fontsize=14, fontweight='bold')
+    plt.tight_layout(rect=[0, 0, 1, 0.98])  # Adjust layout to fit title
+
+    if return_fig:
+        return fig
+    else:
+        # Save the figure to file
+        save_dir = "visuals/train2"
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        print(f"Saving figure to {save_dir}/ecg_comparison_{label}.png")
+        plt.savefig(f"{save_dir}/ecg_comparison_{label}.png", bbox_inches='tight', dpi=300)
+        plt.close(fig)

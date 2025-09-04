@@ -18,3 +18,4 @@ dependencies:
     - opt_einsum
     - matplotlib
     - ecg_plot
+    - wandb

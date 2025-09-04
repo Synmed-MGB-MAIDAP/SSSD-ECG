@@ -30,6 +30,7 @@ import datetime
 
 #from clinical_ts.misc_utils import *
 from .timeseries_utils import *
+from .label_utils import *
 
 # Cell
 channel_stoi_default = {"i": 0, "ii": 1, "v1":2, "v2":3, "v3":4, "v4":5, "v5":6, "v6":7, "iii":8, "avr":9, "avl":10, "avf":11, "vx":12, "vy":13, "vz":14}
@@ -108,11 +109,9 @@ def _age_to_categorical(age, thresholds=None, labels=None):
         thresholds = [30, 40, 50, 60, 70, 80]  # Default thresholds
     if labels is None:
         labels = list(range(len(thresholds) + 1))  # Default labels [0, 1, 2, ...]
-    print(len(thresholds),len(labels))
     for i, threshold in enumerate(thresholds):
         if age < threshold:
             return labels[i]
-    print("age larger than last threshold")
     return labels[-1]
 
 
@@ -145,6 +144,33 @@ def _height_to_categorical(height, thresholds=None, labels=None):
             return labels[i]
     return labels[-1]
 
+def _height_to_categorical_interpolate(height, thresholds=None, labels=None):
+    """
+    Convert height to a categorical label based on customizable thresholds.
+
+    Parameters:
+        height (float): The height value to categorize.
+        thresholds (list): List of height thresholds for binning. Must be sorted in ascending order.
+        labels (list): List of labels corresponding to each bin. Must have len(thresholds) + 1.
+
+    Returns:
+        int: The categorical label for the given height.
+    """
+    if thresholds is None:
+        thresholds = [160, 170, 180]
+
+    if labels is None:
+        labels = list(range(len(thresholds) + 1))
+    
+    if np.isnan(height):
+        # missing height treated as the middle category
+        return labels[len(thresholds) // 2]
+
+    for i, threshold in enumerate(thresholds):
+        if height < threshold:
+            return labels[i]
+    return labels[-1]
+
 
 def _weight_to_categorical(weight, thresholds=None, labels=None):
     """
@@ -168,6 +194,88 @@ def _weight_to_categorical(weight, thresholds=None, labels=None):
 
     for i, threshold in enumerate(thresholds):
         if weight < threshold:
+            return labels[i]
+    return labels[-1]
+
+def _weight_to_categorical_interpolate(weight, thresholds=None, labels=None):
+    """
+    Convert weight to a categorical label based on customizable thresholds.
+
+    Parameters:
+        weight (float): The weight value to categorize.
+        thresholds (list): List of weight thresholds for binning. Must be sorted in ascending order.
+        labels (list): List of labels corresponding to each bin. Must have len(thresholds) + 1.
+
+    Returns:
+        int: The categorical label for the given weight.
+    """
+    if thresholds is None:
+        thresholds = [60, 80, 100]
+
+    if labels is None:
+        labels = list(range(len(thresholds) + 1))
+    
+    if np.isnan(weight):
+        # missing weight treated as the middle category
+        return labels[len(thresholds) // 2]
+
+    for i, threshold in enumerate(thresholds):
+        if weight < threshold:
+            return labels[i]
+    return labels[-1]
+
+
+def _bmi_to_categorical(bmi, thresholds=None, labels=None):
+    """
+    Convert BMI to a categorical label based on customizable thresholds.
+
+    Parameters:
+        bmi (float): The BMI value to categorize.
+        thresholds (list): List of BMI thresholds for binning. Must be sorted in ascending order.
+        labels (list): List of labels corresponding to each bin. Must have len(thresholds) + 1.
+
+    Returns:
+        int: The categorical label for the given BMI.
+    """
+    if np.isnan(bmi):
+        return -1  # Default label for missing BMI
+    
+    if thresholds is None:
+        thresholds = [18.5, 25, 30]  # Default thresholds
+    if labels is None:
+        labels = list(range(len(thresholds) + 1))  # Default labels [0, 1, 2, ...]
+
+    for i, threshold in enumerate(thresholds):
+        if bmi < threshold:
+            return labels[i]
+    return labels[-1]
+
+
+def _bmi_to_categorical_interpolate(bmi, thresholds=None, labels=None):
+    """
+    Convert BMI to a categorical label based on customizable thresholds.
+
+    Parameters:
+        bmi (float): The BMI value to categorize.
+        thresholds (list): List of BMI thresholds for binning. Must be sorted in ascending order.
+        labels (list): List of labels corresponding to each bin. Must have len(thresholds) + 1.
+
+    Returns:
+        int: The categorical label for the given BMI.
+    """
+
+    if thresholds is None:
+        thresholds = [18.5, 25, 30]
+
+    if labels is None:
+        labels = list(range(len(thresholds) + 1))
+    
+    if np.isnan(bmi):
+        # missing BMI treated as the middle category
+        return labels[len(thresholds) // 2]
+
+    for i, threshold in enumerate(thresholds):
+        if bmi < threshold:
             return labels[i]
     return labels[-1]
 
@@ -457,7 +565,6 @@ def prepare_data_ptb(data_folder, target_folder=None, channel_stoi=channel_stoi_
         np.save("./old/evallist_new.npy",evallist)
         np.save("./old/trainlist_new.npy",trainlist)
 
-
         #add means and std
         dataset_add_mean_col(df_ptb,data_folder=target_root_ptb)
         dataset_add_std_col(df_ptb,data_folder=target_root_ptb)
@@ -595,6 +702,7 @@ def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, chann
         ptb_xl_csv = data_path/"ptbxl_database.csv"
         df_ptb_xl=pd.read_csv(ptb_xl_csv,index_col="ecg_id")
         print("df_ptb_xl columns", df_ptb_xl.columns)
+        print("df_ptb_xl sex", df_ptb_xl['sex'].value_counts())
         df_ptb_xl.scp_codes=df_ptb_xl.scp_codes.apply(lambda x: eval(x.replace("nan","np.nan")))
 
         # preparing labels
@@ -621,19 +729,32 @@ def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, chann
         df_ptb_xl["label_diag_subclass"]= df_ptb_xl.label_diag.apply(lambda x: [diag_subclass_mapping[y] for y in x if y in diag_subclass_mapping])
         df_ptb_xl["label_diag_superclass"]= df_ptb_xl.label_diag.apply(lambda x: [diag_class_mapping[y] for y in x if y in diag_class_mapping])
 
+        columns = thresholds.keys() if thresholds is not None else None
+        column_labels = [f"label_{column}" for column in columns] if columns is not None else None
+        column_labels += ["label_sex"]
+
         if thresholds is not None:
             age_threshold = thresholds["age"] if "age" in thresholds else None
             weight_threshold = thresholds["weight"] if "weight" in thresholds else None
             height_threshold = thresholds["height"] if "height" in thresholds else None
-
+            bmi_threshold = thresholds["bmi"] if "bmi" in thresholds else None
+        
+        # calculate bmi and take care of the missing values of height or weight
+        df_ptb_xl["bmi"] = df_ptb_xl["weight"]/((df_ptb_xl["height"]/100)**2)
+        df_ptb_xl["label_bmi"] = df_ptb_xl["bmi"].apply(lambda x: [_bmi_to_categorical_interpolate(x, bmi_threshold)])
         df_ptb_xl["label_age"] = df_ptb_xl["age"].apply(lambda x:[_age_to_categorical(x, age_threshold)])
         df_ptb_xl["label_sex"] = df_ptb_xl["sex"].apply(lambda x: [x])
-        df_ptb_xl["label_weight"] = df_ptb_xl["weight"].apply(lambda x: [_weight_to_categorical(x, weight_threshold)])
-        df_ptb_xl["label_height"] = df_ptb_xl["height"].apply(lambda x: [_height_to_categorical(x, height_threshold)])
+        df_ptb_xl["label_weight"] = df_ptb_xl["weight"].apply(lambda x: [_weight_to_categorical_interpolate(x, weight_threshold)])
+        df_ptb_xl["label_height"] = df_ptb_xl["height"].apply(lambda x: [_height_to_categorical_interpolate(x, height_threshold)])
+        if thresholds and "15" in thresholds:
+            df_ptb_xl["label_15"] = df_ptb_xl["label_all"].apply(labels71_to_labels15_shortnames)
 
         df_ptb_xl["dataset"]="ptb_xl_demographics"
         #filter and map (can be reapplied at any time)
-        df_ptb_xl, lbl_itos_ptb_xl =map_and_filter_labels(df_ptb_xl,min_cnt=min_cnt,lbl_cols=["label_all","label_diag","label_form","label_rhythm","label_diag_subclass","label_diag_superclass","label_age", "label_sex", "label_weight", "label_height"])
+        print("column_labels", column_labels)
+        df_ptb_xl, lbl_itos_ptb_xl =map_and_filter_labels(df_ptb_xl,min_cnt=min_cnt,lbl_cols=["label_all","label_diag","label_form","label_rhythm","label_diag_subclass","label_diag_superclass"] + column_labels)
+
+        print("df_ptb_xl columns", df_ptb_xl.columns)
 
         filenames = []
         iter = 0
@@ -646,9 +767,9 @@ def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, chann
             np.save(target_root_ptb_xl/(filename.stem+".npy"),data)
             filenames.append(Path(filename.stem+".npy"))
             iter += 1
-        #     if iter > 10:
-        #         break
-        # df_ptb_xl = df_ptb_xl[:iter]
+            # if iter > 100:
+            #     break
+        df_ptb_xl = df_ptb_xl[:iter]
         df_ptb_xl["data"] = filenames
 
         # print out the statistics value count of the age, sex, height and weight
@@ -656,6 +777,10 @@ def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, chann
         print("Sex value counts: ", df_ptb_xl["label_sex"].value_counts())
         print("Weight value counts: ", df_ptb_xl["label_weight"].value_counts())
         print("Height value counts: ", df_ptb_xl["label_height"].value_counts())
+        print("BMI value counts: ", df_ptb_xl["label_bmi"].value_counts())
+        print("Diagnosis value counts: ", df_ptb_xl["label_diag"].value_counts())
+        print("Form value counts: ", df_ptb_xl["label_form"].value_counts())
+        print("Rhythm value counts: ", df_ptb_xl["label_rhythm"].value_counts())
 
         #add means and std
         dataset_add_mean_col(df_ptb_xl,data_folder=target_root_ptb_xl)
@@ -671,6 +796,8 @@ def prepare_data_ptb_xl(data_path, min_cnt=10, target_fs=100, channels=12, chann
         save_dataset(df_ptb_xl,lbl_itos_ptb_xl,mean_ptb_xl,std_ptb_xl,target_root_ptb_xl)
     else:
         df_ptb_xl, lbl_itos_ptb_xl, mean_ptb_xl, std_ptb_xl = load_dataset(target_root_ptb_xl,df_mapped=False)
+
+    print("------------------", lbl_itos_ptb_xl)
     return df_ptb_xl, lbl_itos_ptb_xl, mean_ptb_xl, std_ptb_xl
 
 def map_and_filter_labels(df,min_cnt,lbl_cols):
@@ -688,11 +815,19 @@ def map_and_filter_labels(df,min_cnt,lbl_cols):
             lbl_stoi = {s:i for i,s in enumerate(lbl_itos_ptb_xl[selection+"_filtered"])}
             df_ptb_xl[selection+"_filtered_numeric"]=df_ptb_xl[selection+"_filtered"].apply(lambda x:[lbl_stoi[y] for y in x])
         #also lbl_itos and ..._numeric col for original label column
-        lbl_itos_ptb_xl[selection]= np.array(sorted(list(set([x for sublist in df_ptb_xl[selection] for x in sublist]))))
+        if selection in ['label_hr']:
+            continue
+        # print("selection", selection, "sublist", df_ptb_xl[selection])
+        if selection in ['label_15']:
+            # print("print out sorted 15", [""] + label_15)
+            lbl_itos_ptb_xl[selection] = np.array([""] + label_15)
+        else:
+            # print("print out sorted", sorted(list(set([x for sublist in df_ptb_xl[selection] for x in sublist]))))
+            lbl_itos_ptb_xl[selection]= np.array(sorted(list(set([x for sublist in df_ptb_xl[selection] for x in sublist]))))
+        print("print sorted", selection, lbl_itos_ptb_xl[selection])
         lbl_stoi = {s:i for i,s in enumerate(lbl_itos_ptb_xl[selection])}
         df_ptb_xl[selection+"_numeric"]=df_ptb_xl[selection].apply(lambda x:[lbl_stoi[y] for y in x])
     return df_ptb_xl, lbl_itos_ptb_xl
-
 
 # Cell
 def thew_to_np(filename_in, target_fs=100, channels=12, max_length_seconds=0, channel_stoi=None, fs=180, target_folder=None):

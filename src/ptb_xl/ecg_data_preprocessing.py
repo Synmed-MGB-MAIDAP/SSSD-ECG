@@ -1,13 +1,19 @@
 from clinical_ts.timeseries_utils import *
 from clinical_ts.ecg_utils import *
+from clinical_ts.label_utils import *
 from pathlib import Path
 import numpy as np
+import os
+import sys
+import torch
+sys.path.append('../')
+from sssd.utils.demographics_mapping import map_heartrate
 
-threshold_version = "condition_v3"
+threshold_version = "condition_15_demographic"
 
 target_fs=100 # sampling rate (100 Hz or 500 Hz)
-data_folder_ptb_xl = Path("/home/shared/physionet.org/files/ptb-xl/1.0.3")
-target_folder_ptb_xl = Path(f"/home/shared/ptbxl_data_sssd-ecg/{threshold_version}") 
+data_folder_ptb_xl = Path("/home/shared/data/ptbxl/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.3")
+target_folder_ptb_xl = Path(f"/home/shared/zoey_data/ptbxl/{threshold_version}") 
 
 # v1 rough thresholds 90
 thresholds_v1 = {
@@ -29,21 +35,47 @@ thresholds_v3 = {
     "height": [150, 159, 169, 179],
 }
 
-# Prepare the dataset
-df_ptb_xl, lbl_itos_ptb_xl,  mean_ptb_xl, std_ptb_xl = prepare_data_ptb_xl(data_folder_ptb_xl, min_cnt=0, target_fs=target_fs, channels=12, channel_stoi=channel_stoi_default, target_folder=target_folder_ptb_xl, thresholds=thresholds_v3)
+# bmi thresholds 71+7
+threshold_bmi = {
+    "bmi": [18.5, 25, 30, 35, 40]
+}
 
-print(lbl_itos_ptb_xl.keys())
+threshold_all = {
+    "age": [12, 17, 34, 54, 74],
+    "weight": [50, 70, 90, 110],
+    "height": [150, 159, 169, 179],
+    "bmi": [18.5, 25, 30, 35, 40]
+
+thresholds_15 = {
+    "15": "Yes",
+    "age": [12, 17, 34, 54, 74],
+    "weight": [50, 70, 90, 110],
+    "height": [150, 159, 169, 179],
+    "hr": [60, 70, 80, 90, 100],
+}
+
+if threshold_version == ["condition_v1", "condition_v1_interpolate"]:
+    threshold_selected = thresholds_v1
+elif threshold_version == ["condition_v2"]:
+    threshold_selected = thresholds_v2
+elif threshold_version in ["condition_v3"]:
+    threshold_selected = thresholds_v3
+elif threshold_version in ["condition_bmi", "condition_bmi_interpolate"]:
+    threshold_selected = threshold_bmi
+elif threshold_version in ["condition_all", "condition_all_separate"]:
+    threshold_selected = threshold_all
+elif threshold_version in ["condition_15_demographic"]:
+    threshold_selected = thresholds_15
+
+# Prepare the dataset
+df_ptb_xl, lbl_itos_ptb_xl,  mean_ptb_xl, std_ptb_xl = prepare_data_ptb_xl(data_folder_ptb_xl, min_cnt=0, target_fs=target_fs, channels=12, channel_stoi=channel_stoi_default, target_folder=target_folder_ptb_xl, thresholds=threshold_selected)
+
+# print(lbl_itos_ptb_xl.keys())
 
 #reformat everything as memmap for efficiency
 reformat_as_memmap(df_ptb_xl, target_folder_ptb_xl/("memmap.npy"),data_folder=target_folder_ptb_xl,delete_npys=True)
 
-df_ptb_xl.columns
-
-# print the first dataline of the dataframe
-df_ptb_xl.iloc[0]
-
-# check all the columns and the datatypes
-df_ptb_xl.dtypes
+# print("df_ptb_xl dtypes", df_ptb_xl.dtypes)
 
 input_size = 1000  # Sample length
 
@@ -56,8 +88,8 @@ chunk_length_valtest = input_size if chunkify_valtest else 0
 stride_valtest = input_size
 
 df_mapped, lbl_itos,  mean, std = load_dataset(target_folder_ptb_xl)
-print("lbl_itos", lbl_itos.keys())
-print(df_mapped.columns)
+# print("lbl_itos", lbl_itos)
+# print(df_mapped.columns)
 
 ds_mean = np.array([-0.00184586, -0.00130277,  0.00017031, -0.00091313, -0.00148835,  -0.00174687, -0.00077071, -0.00207407,  0.00054329,  0.00155546,  -0.00114379, -0.00035649])
 ds_std = np.array([0.16401004, 0.1647168 , 0.23374124, 0.33767231, 0.33362807,  0.30583013, 0.2731171 , 0.27554379, 0.17128962, 0.14030828,   0.14606956, 0.14656108])
@@ -82,23 +114,46 @@ all_meta_labels = ['patient_id', 'age', 'sex', 'height', 'weight', 'nurse', 'sit
        'label_diag_superclass_numeric', 'data', 'data_mean', 'data_std',
        'data_length']
 
-ptb_xl_label_demographcis = ["label_all", "label_age", "label_sex", "label_height", "label_weight"]
-# Label all has 71 classes, label age has 7 classes, label sex has 2 classes, label height has 5 classes, label weight has 5 classes
+columns_selected = threshold_selected.keys()
+label_selected = [f"label_{col}" for col in columns_selected] + ["label_sex"]
+# print("label_selected", label_selected)
+if threshold_version.endswith("separate"): 
+    ptb_xl_label = ["label_diag", "label_form", "label_rhythm"]
+else:
+    ptb_xl_label = ["label_all"]
 
-df_mapped["label"] = df_mapped.apply(
-    lambda row: np.concatenate([
-        multihot_encode(row[label+"_numeric"], len(lbl_itos[label]))
-        for label in ptb_xl_label_demographcis
-    ]),
-    axis=1
-)
+ptb_xl_label_demographcis = ptb_xl_label + label_selected
+# Label all has 71 classes, label age has 6 classes, label sex has 2 classes, label height has 4 classes, label weight has 4 classes, label bmi has 6 classes
 
-# print(df_mapped["label"])
-print(len(df_mapped["label"].iloc[0]))
+# df_mapped["label"] = df_mapped.apply(
+#     lambda row: np.concatenate([
+#         multihot_encode(row[label+"_numeric"], len(lbl_itos[label]))
+#         for label in ptb_xl_label_demographcis if label not in ["label_15", 'label_hr']
+#     ]),
+#     axis=1
+# )
+
+all_labels = []
+for label in ptb_xl_label_demographcis:
+    if label not in ["label_hr"]:
+        encoded = df_mapped[label + "_numeric"].apply(
+            lambda x: multihot_encode(x, len(lbl_itos[label]))
+        )
+        print(f"{label} shape: {len(lbl_itos[label])}")
+        all_labels.append(np.stack(encoded))
+    else:
+        continue
+
+# Stack and concatenate across columns (axis=1)
+df_mapped["label"] = [np.concatenate([all_labels[i][j] for i in range(len(all_labels))])
+                      for j in range(len(df_mapped))]
+
+
+# print("check label length", len(df_mapped["label"].iloc[0]))
 tfms_ptb_xl_cpc = ToTensor()
             
 max_fold_id = df_mapped.strat_fold.max()
-print(df_mapped["strat_fold"].value_counts())
+# print(df_mapped["strat_fold"].value_counts())
 
 df_train = df_mapped[df_mapped.strat_fold<max_fold_id-1]
 df_val = df_mapped[df_mapped.strat_fold==max_fold_id-1]
@@ -112,14 +167,38 @@ ds_train=TimeseriesDatasetCrops(df_train,input_size,num_classes=len(lbl_itos),da
 ds_val=TimeseriesDatasetCrops(df_val,input_size,num_classes=len(lbl_itos),data_folder=target_folder_ptb_xl,chunk_length=chunk_length_valtest,min_chunk_length=input_size, stride=stride_valtest,transforms=tfms_ptb_xl_cpc,annotation=False,col_lbl ="label",memmap_filename=target_folder_ptb_xl/("memmap.npy"))
 ds_test=TimeseriesDatasetCrops(df_test,input_size,num_classes=len(lbl_itos),data_folder=target_folder_ptb_xl,chunk_length=chunk_length_valtest,min_chunk_length=input_size, stride=stride_valtest,transforms=tfms_ptb_xl_cpc,annotation=False,col_lbl ="label",memmap_filename=target_folder_ptb_xl/("memmap.npy"))
 
+if not os.path.exists(target_folder_ptb_xl/"data"):
+    print("Creating folders", target_folder_ptb_xl/"data")
+    os.makedirs(target_folder_ptb_xl/"data")
+if not os.path.exists(target_folder_ptb_xl/"labels"):
+    print("Creating folders", target_folder_ptb_xl/"labels")
+    os.makedirs(target_folder_ptb_xl/"labels")
+
 # Save splits into npy files with data and labels
 train_data_npy = []
 train_label_npy = []
 for i in range(len(ds_train)):
     train_data_npy.append(ds_train[i].data)
-    train_label_npy.append(ds_train[i].label)
+    # Extract age, gender, heartrate from df_train
+    age_val = df_train.iloc[i]["age"] if "age" in df_train.columns else 0.0
+    gender_val = 1.0 if str(df_train.iloc[i]["sex"]).lower() == "male" else 0.0
+    hr, n_peaks, _ = calculate_heart_rate(ds_train[i].data)
+    heartrate_val = hr if hr is not None else 0.0
+    train_label = torch.cat([
+        torch.tensor(ds_train[i].label),
+        torch.tensor([age_val, gender_val, heartrate_val])
+    ])
+    train_label_npy.append(train_label)
+
 train_data_npy = np.array(train_data_npy)
-trai_label_npy = np.array(train_label_npy)
+train_label_npy = np.array(train_label_npy)
+
+if threshold_version == "condition_all_separate":
+    index_to_remove = [9, 33, 36, 38]
+else:
+    index_to_remove = []
+# train_data_npy = np.delete(train_data_npy, index_to_remove, axis=1)
+train_label_npy = np.delete(train_label_npy, index_to_remove, axis=1)
 
 np.save(target_folder_ptb_xl/"data/ptbxl_train_data.npy", train_data_npy)
 np.save(target_folder_ptb_xl/"labels/ptbxl_train_labels.npy", train_label_npy)
@@ -128,9 +207,21 @@ val_data_npy = []
 val_label_npy = []
 for i in range(len(ds_val)):
     val_data_npy.append(ds_val[i].data)
-    val_label_npy.append(ds_val[i].label)
+    age_val = df_val.iloc[i]["age"] if "age" in df_val.columns else 0.0
+    gender_val = 1.0 if str(df_val.iloc[i]["sex"]).lower() == "male" else 0.0
+    hr, n_peaks, _ = calculate_heart_rate(ds_val[i].data)
+    heartrate_val = hr if hr is not None else 0.0
+    val_label = torch.cat([
+        torch.tensor(ds_val[i].label),
+        torch.tensor([age_val, gender_val, heartrate_val])
+    ])
+    val_label_npy.append(val_label)
+
 val_data_npy = np.array(val_data_npy)
 val_label_npy = np.array(val_label_npy)
+
+# val_data_npy = np.delete(val_data_npy, index_to_remove, axis=1)
+val_label_npy = np.delete(val_label_npy, index_to_remove, axis=1)
 
 np.save(target_folder_ptb_xl/"data/ptbxl_val_data.npy", val_data_npy)
 np.save(target_folder_ptb_xl/"labels/ptbxl_val_labels.npy", val_label_npy)
@@ -139,15 +230,44 @@ test_data_npy = []
 test_label_npy = []
 for i in range(len(ds_test)):
     test_data_npy.append(ds_test[i].data)
-    test_label_npy.append(ds_test[i].label)
+    age_val = df_test.iloc[i]["age"] if "age" in df_test.columns else 0.0
+    gender_val = 1.0 if str(df_test.iloc[i]["sex"]).lower() == "male" else 0.0
+    hr, n_peaks, _ = calculate_heart_rate(ds_test[i].data)
+    heartrate_val = hr if hr is not None else 0.0
+    test_label = torch.cat([
+        torch.tensor(ds_test[i].label),
+        torch.tensor([age_val, gender_val, heartrate_val])
+    ])
+    test_label_npy.append(test_label)
 test_data_npy = np.array(test_data_npy)
 test_label_npy = np.array(test_label_npy)
+
+# test_data_npy = np.delete(test_data_npy, index_to_remove, axis=1)
+test_label_npy = np.delete(test_label_npy, index_to_remove, axis=1)
 
 np.save(target_folder_ptb_xl/"data/ptbxl_test_data.npy", test_data_npy)
 np.save(target_folder_ptb_xl/"labels/ptbxl_test_labels.npy", test_label_npy)
 
 # Load and check the shape of the saved npy files
-train_data = np.load(target_folder_ptb_xl/f"{threshold_version}/ptbxl_train_data.npy")
-train_labels = np.load(target_folder_ptb_xl/f"{threshold_version}/ptbxl_train_labels.npy")
+print("Loading data from npy files...")
+train_data = np.load(target_folder_ptb_xl/"data/ptbxl_train_data.npy")
+train_labels = np.load(target_folder_ptb_xl/"labels/ptbxl_train_labels.npy")
 print(train_data.shape)
 print(train_labels.shape)
+
+# heart rate distribution
+hr_train = []
+for i in range(len(train_labels)):
+    hr_train.append(train_labels[i][-6:])
+hr_train = np.array(hr_train)
+# plot one hot distribution
+
+val_data = np.load(target_folder_ptb_xl/"data/ptbxl_val_data.npy")
+val_labels = np.load(target_folder_ptb_xl/"labels/ptbxl_val_labels.npy")
+print(val_data.shape)
+print(val_labels.shape)
+
+test_data = np.load(target_folder_ptb_xl/"data/ptbxl_test_data.npy")
+test_labels = np.load(target_folder_ptb_xl/"labels/ptbxl_test_labels.npy")
+print(test_data.shape)
+print(test_labels.shape)

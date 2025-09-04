@@ -167,16 +167,29 @@ class SSSD_ECG(nn.Module):
                  s4_dropout,
                  s4_bidirectional,
                  s4_layernorm,
-                label_embed_classes=0,
-                label_embed_dim=128):
+                label_embed_classes=71,
+                class_split=[[0,70]],
+                label_embed_dims=[128]):
         super(SSSD_ECG, self).__init__()
 
         self.init_conv = nn.Sequential(Conv(in_channels, res_channels, kernel_size=1), nn.ReLU())
+        # class_split is [index1, index2] to split into different group of classes
+        self.class_split = class_split
+        self.label_embed_classes = label_embed_classes
+        self.label_embed_dims = label_embed_dims
         
-        # embedding for global conditioning
-        self.embedding = nn.Embedding(label_embed_classes, label_embed_dim) if label_embed_classes>0 is not None else None
-        # extend label_embed_classes (age, gender, etc are encoded as one-hot)
-        # self.embedding_age nn.Embedding()
+        self.embedding_layers = []
+        for i, index in enumerate(self.class_split):
+            if index[0] <= index[1]:
+                label_classes = index[1] - index[0] + 1
+            else:
+                label_classes = index[0] - index[1] + 1
+            self.embedding_layers.append(nn.Embedding(label_classes, self.label_embed_dims[i]))
+            
+
+        # 128 is the default embedding dimension
+        self.embedding_dim = sum(self.label_embed_dims)
+
         self.residual_layer = Residual_group(res_channels=res_channels, 
                                              skip_channels=skip_channels, 
                                              num_res_layers=num_res_layers, 
@@ -189,18 +202,33 @@ class SSSD_ECG(nn.Module):
                                              s4_dropout=s4_dropout,
                                              s4_bidirectional=s4_bidirectional,
                                              s4_layernorm=s4_layernorm,
-                                            label_embed_dim=label_embed_dim if label_embed_classes > 0 else None)
+                                            label_embed_dim=self.embedding_dim)
         
         self.final_conv = nn.Sequential(Conv(skip_channels, skip_channels, kernel_size=1),
                                         nn.ReLU(),
                                         ZeroConv1d(skip_channels, out_channels))
 
     def forward(self, input_data):
-        
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         noise, label, diffusion_steps = input_data
 
-        label_embed = label @ self.embedding.weight if self.embedding is not None else None
+        embeddings = []
         
+        for i, index in enumerate(self.class_split):
+            if index[0] <= index[1]:
+                label_class = label[:,index[0]:index[1]+1]
+            else:
+                # print(f"label[:,{index[0]}:{index[1]}-1:-1]")
+                label_class = label[:,torch.tensor([index[0], index[1]])]
+            embedding_layer = self.embedding_layers[i]
+            label_class = label_class.to(device)
+            embedding_layer = embedding_layer.to(device)
+
+            embeddings.append(label_class @ embedding_layer.weight)
+
+        label_embed = torch.cat(embeddings, dim=1)
+
         x = noise
         x = self.init_conv(x)
         x = self.residual_layer((x, label_embed, diffusion_steps))

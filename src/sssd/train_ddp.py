@@ -49,6 +49,9 @@ def train(rank,
             model_config,
             diffusion_config,
             diffusion_hyperparams,
+            trainset_config,
+            project_config,
+            viz_split_config,
          debug=True):
   
     """
@@ -110,7 +113,7 @@ def train(rank,
     # predefine model
     print(f"[INFO] Instantiating model SSSD_ECG with config: {model_config}")
     net = SSSD_ECG(**model_config).cuda()
-    net = DDP(net, device_ids=[rank])
+    net = DDP(net, device_ids=[rank], find_unused_parameters=True)
     total_params = sum(p.numel() for p in net.parameters())
     print(f"Total Parameters: {total_params:,}")
     if rank == 0:
@@ -473,7 +476,7 @@ def train_main(gpu_list, **kwargs):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD-ECG_demographic_71_mel_+a.json',
+    parser.add_argument('-c', '--config', type=str, default='/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD-ECG_demographic_71_mel_+g.json',
                         help='JSON file for configuration')
 
     args = parser.parse_args()
@@ -520,5 +523,15 @@ if __name__ == "__main__":
     viz_split_config = config.get('viz_split_config', {'use_ptbxl': True, "ptbxl_data_path": "/home/shared/zoey_data/ptbxl/condition_15_demographic_v1"})  # Default to PTBXL if not specified
     print(f"[INFO] viz_split_config: {viz_split_config}")
 
-    train_main([1,2,3], **train_config, **project_config, **viz_split_config, model_config=model_config, diffusion_config=diffusion_config, diffusion_hyperparams=diffusion_hyperparams)
+    train_main([1,2,3], 
+               **train_config, 
+               **project_config, 
+               **viz_split_config, 
+               trainset_config=trainset_config, 
+               model_config=model_config, 
+               diffusion_config=diffusion_config, 
+               diffusion_hyperparams=diffusion_hyperparams, 
+               project_config=project_config, 
+               viz_split_config=viz_split_config,
+               debug=False)
 

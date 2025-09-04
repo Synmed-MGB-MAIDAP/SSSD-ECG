@@ -20,18 +20,18 @@
         "s4_layernorm":1,
         "label_embed_dims":[96, 32],
         "label_embed_classes":111,
-        "class_split":[[0,71], [87, 92]]
+        "class_split":[[0,71], [103, 104]]
     },
     "train_config": {
         "data_path": "/home/shared/zoey_data/ptbxl/condition_15_demographic_v1",
         "output_directory": "/home/shared/zoey_data/ptbxl/condition_15_demographic_v1",
         "ckpt_iter": "max",
-        "iters_per_ckpt": 1000,
+        "iters_per_ckpt": 500,
         "iters_per_logging": 100,
         "iters_per_test": 5000,
-        "n_iters": 1,
+        "n_iters": 100000,
         "learning_rate": 4e-4,
-        "batch_size":48
+        "batch_size":54
     },
     "trainset_config":{
         "segment_length":1000,
@@ -47,6 +47,6 @@
     },
     "project_config": {
         "project_name": "SSSD-ECG",
-        "experiment_name": "ptbxl_disease_71_mel_+a"
+        "experiment_name": "ptbxl_disease_71_mel_+g"
     }
 }

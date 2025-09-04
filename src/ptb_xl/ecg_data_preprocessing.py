@@ -45,7 +45,6 @@ threshold_all = {
     "weight": [50, 70, 90, 110],
     "height": [150, 159, 169, 179],
     "bmi": [18.5, 25, 30, 35, 40]
-}
 
 thresholds_15 = {
     "15": "Yes",
@@ -76,12 +75,6 @@ df_ptb_xl, lbl_itos_ptb_xl,  mean_ptb_xl, std_ptb_xl = prepare_data_ptb_xl(data_
 #reformat everything as memmap for efficiency
 reformat_as_memmap(df_ptb_xl, target_folder_ptb_xl/("memmap.npy"),data_folder=target_folder_ptb_xl,delete_npys=True)
 
-# print("df_ptb_xl columns", df_ptb_xl.columns)
-
-# print the first dataline of the dataframe
-# print("df_ptb_xl first dataline", df_ptb_xl.iloc[0])
-
-# check all the columns and the datatypes
 # print("df_ptb_xl dtypes", df_ptb_xl.dtypes)
 
 input_size = 1000  # Sample length

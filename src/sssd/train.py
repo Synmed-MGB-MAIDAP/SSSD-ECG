@@ -27,7 +27,6 @@ def plot_ecg(signal, filepath):
     ecg_plot.plot(signal, sample_rate = 100)
     plt.savefig(filepath, format="jpeg")
 
-
 def train(output_directory,
           ckpt_iter,
           n_iters,

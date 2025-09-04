@@ -79,7 +79,8 @@ def generate(output_directory,
              ckpt_iter,
              experiment_name,
              inference_split="test",
-             seed=0):
+             seed=0,
+             reverse=False):  # <-- add reverse argument
     
     """
     Generate data based on ground truth 
@@ -104,7 +105,7 @@ def generate(output_directory,
     # experiment_name = ""
     # inference_split = "val"
     # trainset_config["finetune_dataset"] = "ptbxl_all"
-    chunks_size = 400  # Number of samples per chunk
+    chunks_size = 800  # Number of samples per chunk
     # print("num_samples: ", num_samples)
 
     # Initialize wandb for visualization
@@ -210,6 +211,14 @@ def generate(output_directory,
         
         signal_length = 1024  # MIMIC-IV signal length
     
+    if reverse:
+        print("[INFO] Reversing chunks order for inference")
+        chunks = list(reversed(chunks))
+
+    print("[INFO] each chunk's samples:")
+    for i, chunk in enumerate(chunks):
+        print(f"Chunk {i}: {chunk.shape}")
+
     print("Starting generation")
     tik = time.time()
     
@@ -232,15 +241,24 @@ def generate(output_directory,
             start.record()
 
             # Get corresponding real data for this chunk
-            start_idx = i * chunks_size
+            if reverse:
+                chunk_idx = len(chunks) - i - 1
+            else:
+                chunk_idx = i
+
+            start_idx = chunk_idx * chunks_size
             end_idx = min(start_idx + num_samples, len(real_data))
-            chunk_real_data = real_data[start_idx:end_idx,:]
+            chunk_real_data = real_data[start_idx:end_idx, :]
             cond = cond[:num_samples, :]
 
             real_audio = torch.from_numpy(chunk_real_data).float()
             real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
-            
-            print(f"Generating {num_samples} samples for chunk {i}")
+
+            assert len(cond) == len(real_audio8)
+            if reverse:
+                print(f"Generating {len(cond)} samples for chunk {len(chunks) - i - 1}")
+            else:
+                print(f"Generating {len(cond)} samples for chunk {i}")
 
             # sanity check
             # real_audio = np.load("/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16/condition_mimic_15_lr_6e-4_bs16_eval_mimic_2/ch256_T200_betaT0.02/val_during_train_data0/real_audio_0_0.npy")
@@ -255,38 +273,41 @@ def generate(output_directory,
             generated_audio = sampling_label(net, real_audio8.shape, 
                                 diffusion_hyperparams,
                                 cond=cond)
-            
             # Generate 12 leads
             generated_audio12 = generate_four_leads(generated_audio)
+
+            #### DEBUG
+            # debug, create a random numpy array of size (num_samples, 12, 1024)
+            # generated_audio12 = torch.randn(len(cond), 12, 1000).cuda()
 
             end.record()
             torch.cuda.synchronize()
             print(f'Generated {num_samples} samples in {int(start.elapsed_time(end)/1000)} seconds')
         
             # Plot intermediate results
-            plot_signal_pairs(
-                real_audio.detach().cpu().numpy(),
-                generated_audio12.detach().cpu().numpy(),
-                plot_dir,
-                i,
-                num_samples=len(real_audio)  # Plot 5 random samples per chunk
-            )
+            # plot_signal_pairs(
+            #     real_audio.detach().cpu().numpy(),
+            #     generated_audio12.detach().cpu().numpy(),
+            #     plot_dir,
+            #     i,
+            #     num_samples=len(real_audio)  # Plot 5 random samples per chunk
+            # )
         
             # Log some samples to wandb
-            if i % 2 == 0:  # Log every other chunk to avoid too many plots
-                for j in range(min(3, len(chunk_real_data))):
-                    fig = plot_ecg_comparison(
-                        chunk_real_data[j],
-                        generated_audio12[j].detach().cpu().numpy(),
-                        label=f"chunk{i}_sample{j}",
-                        return_fig=True
-                    )
-                    wandb.log({
-                        f"chunk{i}_sample{j}": wandb.Image(fig),
-                        "chunk": i,
-                        "sample": j
-                    })
-                    plt.close(fig)
+            # if i % 2 == 0:  # Log every other chunk to avoid too many plots
+            #     for j in range(min(3, len(chunk_real_data))):
+            #         fig = plot_ecg_comparison(
+            #             chunk_real_data[j],
+            #             generated_audio12[j].detach().cpu().numpy(),
+            #             label=f"chunk{i}_sample{j}",
+            #             return_fig=True
+            #         )
+            #         wandb.log({
+            #             f"chunk{i}_sample{j}": wandb.Image(fig),
+            #             "chunk": i,
+            #             "sample": j
+            #         })
+            #         plt.close(fig)
 
             # Save chunk results
             all_generated.append(generated_audio12.detach().cpu().numpy())
@@ -294,14 +315,20 @@ def generate(output_directory,
             real_data_inferenced.append(real_audio.detach().cpu().numpy())
         
             # Save intermediate results
-            outfile = f'{i}_samples.npy'
-            synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_{ckpt_iter}")
+            if reverse:
+                outfile = f'{len(chunks) - i - 1}_samples.npy'
+            else:
+                outfile = f'{i}_samples.npy'
+            synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_{ckpt_iter}_{reverse}")
             if not os.path.exists(synth_data_path):
                 os.makedirs(synth_data_path)
             new_out = os.path.join(synth_data_path, outfile)
             np.save(new_out, generated_audio12.detach().cpu().numpy())
             
-            outfile = f'{i}_labels.npy'
+            if reverse:
+                outfile = f'{len(chunks) - i - 1}_labels.npy'
+            else:
+                outfile = f'{i}_labels.npy'
             new_out = os.path.join(synth_data_path, outfile)
             np.save(new_out, cond.detach().cpu().numpy())
 
@@ -311,7 +338,7 @@ def generate(output_directory,
     real_data_inferenced = np.concatenate(real_data_inferenced, axis=0)
 
     # Save complete results
-    synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_{ckpt_iter}")
+    # synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_{ckpt_iter}_{reverse}")
     np.save(os.path.join(synth_data_path, 'all_samples.npy'), all_generated)
     np.save(os.path.join(synth_data_path, 'all_labels.npy'), all_labels)
     
@@ -344,8 +371,9 @@ if __name__ == "__main__":
                         help='JSON file for configuration')
     parser.add_argument('-ckpt_iter', '--ckpt_iter', default="max",
                         help='Which checkpoint to use; assign a number or "max"')
-    parser.add_argument('-n', '--num_samples', type=int, default=400,
+    parser.add_argument('-n', '--num_samples', type=int, default=800,
                         help='Number of utterances to be generated')
+    parser.add_argument('--reverse', action='store_true', help='If set, reverse the inference order (from last chunk to first)')
     args = parser.parse_args()
 
     # Parse configs. Globals nicer in this case
@@ -370,4 +398,5 @@ if __name__ == "__main__":
             num_samples=args.num_samples,
             experiment_name=experiment_name,
             data_path=trainset_config["data_path"],
-            seed=seed)
+            seed=seed,
+            reverse=args.reverse)

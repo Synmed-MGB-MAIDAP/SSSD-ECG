@@ -180,14 +180,23 @@ train_label_npy = []
 for i in range(len(ds_train)):
     train_data_npy.append(ds_train[i].data)
     # Extract age, gender, heartrate from df_train
-    age_val = df_train.iloc[i]["age"] if "age" in df_train.columns else 0.0
-    gender_val = 1.0 if str(df_train.iloc[i]["sex"]).lower() == "male" else 0.0
+    age_val = df_train.iloc[i]["age"]
+    age_val = age_val if age_val is not None else -1.0
+    # print("sex raw data", df_train.iloc[i]["sex"])
+    gender_val = df_train.iloc[i]["sex"]
+    gender_val = gender_val if gender_val is not None else -1.0
     hr, n_peaks, _ = calculate_heart_rate(ds_train[i].data)
-    heartrate_val = hr if hr is not None else 0.0
+    if hr is None:
+        hr_tensor = torch.tensor(0.0)
+    else:
+        hr_tensor = torch.tensor(map_heartrate(hr))
+    heartrate_val = hr if hr is not None else -1.0
     train_label = torch.cat([
         torch.tensor(ds_train[i].label),
+        hr_tensor,
         torch.tensor([age_val, gender_val, heartrate_val])
     ])
+    print("age", age_val, " gender", gender_val, " heartrate", heartrate_val)
     train_label_npy.append(train_label)
 
 train_data_npy = np.array(train_data_npy)
@@ -207,12 +216,19 @@ val_data_npy = []
 val_label_npy = []
 for i in range(len(ds_val)):
     val_data_npy.append(ds_val[i].data)
-    age_val = df_val.iloc[i]["age"] if "age" in df_val.columns else 0.0
-    gender_val = 1.0 if str(df_val.iloc[i]["sex"]).lower() == "male" else 0.0
+    age_val = df_val.iloc[i]["age"]
+    age_val = age_val if age_val is not None else -1.0
+    gender_val = df_val.iloc[i]["sex"]
+    gender_val = gender_val if gender_val is not None else -1.0
     hr, n_peaks, _ = calculate_heart_rate(ds_val[i].data)
-    heartrate_val = hr if hr is not None else 0.0
+    if hr is None:
+        hr_tensor = torch.tensor(0.0)  # or some default/fallback
+    else:
+        hr_tensor = torch.tensor(map_heartrate(hr))
+    heartrate_val = hr if hr is not None else -1.0
     val_label = torch.cat([
         torch.tensor(ds_val[i].label),
+        hr_tensor,
         torch.tensor([age_val, gender_val, heartrate_val])
     ])
     val_label_npy.append(val_label)
@@ -230,12 +246,19 @@ test_data_npy = []
 test_label_npy = []
 for i in range(len(ds_test)):
     test_data_npy.append(ds_test[i].data)
-    age_val = df_test.iloc[i]["age"] if "age" in df_test.columns else 0.0
-    gender_val = 1.0 if str(df_test.iloc[i]["sex"]).lower() == "male" else 0.0
+    age_val = df_test.iloc[i]["age"]
+    age_val = age_val if age_val is not None else -1.0
+    gender_val = df_test.iloc[i]["sex"]
+    gender_val = gender_val if gender_val is not None else -1.0
     hr, n_peaks, _ = calculate_heart_rate(ds_test[i].data)
-    heartrate_val = hr if hr is not None else 0.0
+    if hr is None:
+        hr_tensor = torch.tensor(0.0)  # or some default/fallback
+    else:
+        hr_tensor = torch.tensor(map_heartrate(hr))
+    heartrate_val = hr if hr is not None else -1.0
     test_label = torch.cat([
         torch.tensor(ds_test[i].label),
+        hr_tensor,
         torch.tensor([age_val, gender_val, heartrate_val])
     ])
     test_label_npy.append(test_label)

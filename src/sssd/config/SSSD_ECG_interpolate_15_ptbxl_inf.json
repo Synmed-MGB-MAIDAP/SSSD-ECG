@@ -43,7 +43,7 @@
     "gen_config":{
         "output_directory": "/home/shared/zoey_data/ptbxl/condition_15_demographic_v1",
         "ckpt_path": "/home/shared/zoey_data/ptbxl/condition_15_demographic_v1",
-        "inference_split": "test"
+        "inference_split": "train"
     },
     "project_config": {
         "project_name": "SSSD-ECG",

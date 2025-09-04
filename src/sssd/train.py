@@ -19,7 +19,7 @@ import sys
 import importlib
 import os
 from tqdm import tqdm
-
+import matplotlib.pyplot as plt
 
 
 def plot_ecg(signal, filepath):
@@ -40,7 +40,7 @@ def train(output_directory,
          experiment_name,
          use_ptbxl,
          ptbxl_data_path,
-         debug=False):
+         debug=True):
   
     """
     Train Diffusion Models
@@ -207,8 +207,10 @@ def train(output_directory,
                 desc="Training",
                 unit="iter")
     
+    step = 0
     for n_iter in pbar:
         for i, (audio, label) in enumerate(trainloader):
+            step += 1
             audio = torch.index_select(audio, 1, index_8).float().cuda()
             label = label.float().cuda()
             
@@ -217,16 +219,14 @@ def train(output_directory,
             
             X = audio, label
 
-            if train_config['loss_fn'] == 'mel_loss':
-                loss, mel, mse, orig_x_signal, reconstructed_x_signal = training_loss_label(net, torch.nn.MSELoss(), X, diffusion_hyperparams)
+            if trainset_config['loss_fn'] == 'mel_loss':
+                loss, mel, mse, orig_x_signal, reconstructed_x_signal = training_loss_label(net, trainset_config['loss_fn'], X, diffusion_hyperparams)
                 wandb.log({'training loss': loss.item(), 'iteration': n_iter})
                 wandb.log({'mel loss': mel.item(), 'iteration': n_iter})
                 wandb.log({'mse loss': mse.item(), 'iteration': n_iter})
-                wandb.log({'original_x_signal': wandb.Audio(orig_x_signal, caption="original_x_signal", sample_rate=100, max_frames=300000), 'iteration': n_iter})
-                wandb.log({'reconstructed_x_signal': wandb.Audio(reconstructed_x_signal, caption="reconstructed_x_signal", sample_rate=100, max_frames=300000), 'iteration': n_iter})
             else:
                 loss = training_loss_label(net, trainset_config['loss_fn'], X, diffusion_hyperparams)
-                wandb.log({'training loss': loss.item(), 'iteration': n_iter})
+                wandb.log({'training loss': loss.item(), 'iteration': step})
             
             loss.backward()
             optimizer.step()
@@ -318,17 +318,23 @@ def train(output_directory,
                 # # save the figure
                 # fig.savefig(os.path.join(save_dir, f"ecg_comparison_{n_iter}_{i}.png"))
                 # # Log the figure to W&B
-                # ecg_figs.append(wandb.Image(fig, caption=f"iter{n_iter}_sample{i}"))
+                ecg_figs.append(wandb.Image(fig, caption=f"iter{n_iter}_sample{i}"))
             # Log all images as a list
-            if train_config['loss_fn'] == "mel_loss":
-                original_x_path = Path.home() / f'MGB-MAIDAP/models/SSSD-ECG/signal_plot/original_x_{n_iter}_{loss.item()}.jpg'
-                reconstructed_x_path = Path.home() / f'MGB-MAIDAP/models/SSSD-ECG/signal_plot/recontructed_x_{n_iter}_{loss.item()}.jpg'
+            if trainset_config['loss_fn'] == "mel_loss":
+                ecg_plot_path = f'{trainset_config["data_path"]}/ecg_plot'
+                if not os.path.exists(ecg_plot_path):
+                    os.makedirs(ecg_plot_path)
+                original_x_path = f'{ecg_plot_path}/val_original_x_{n_iter}_{loss.item()}.jpg'
+                reconstructed_x_path = f'{ecg_plot_path}/val_reconstructed_x_{n_iter}_{loss.item()}.jpg'
                 plot_ecg(orig_x_signal, original_x_path)
                 plot_ecg(reconstructed_x_signal, reconstructed_x_path)
 
                 orig_x_im = plt.imread(original_x_path)
                 recon_x_im = plt.imread(reconstructed_x_path)
-                
+
+                ecg_figs.append(wandb.Image(orig_x_im, caption=f"iter{n_iter}_origin{i}"))
+                ecg_figs.append(wandb.Image(recon_x_im, caption=f"iter{n_iter}_recon{i}"))
+
             wandb.log({"ecg_comparisons": ecg_figs, "iteration": n_iter})
 
         # save checkpoint
@@ -410,7 +416,7 @@ def train(output_directory,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD_ECG_interpolate_15_ptbxl.json',
+    parser.add_argument('-c', '--config', type=str, default='/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD-ECG_demographic_71_mel_+a.json',
                         help='JSON file for configuration')
 
     args = parser.parse_args()

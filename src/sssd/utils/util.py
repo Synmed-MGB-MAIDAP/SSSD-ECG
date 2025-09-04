@@ -213,7 +213,6 @@ def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
 
     else:
         loss = mse_loss_fn(epsilon_theta, z)
-    
         return loss
 
 def plot_ecg_comparison(real_data, synth_data, label, lead_names=None, return_fig=False):

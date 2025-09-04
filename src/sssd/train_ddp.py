@@ -20,6 +20,10 @@ import importlib
 import os
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import torch.multiprocessing as mp
+from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.distributed as dist
+from functools import partial
 
 
 def plot_ecg(signal, filepath):
@@ -27,7 +31,9 @@ def plot_ecg(signal, filepath):
     ecg_plot.plot(signal, sample_rate = 100)
     plt.savefig(filepath, format="jpeg")
 
-def train(output_directory,
+def train(rank,
+        num_gpus,
+          output_directory,
           ckpt_iter,
           n_iters,
           data_path,
@@ -40,6 +46,12 @@ def train(output_directory,
          experiment_name,
          use_ptbxl,
          ptbxl_data_path,
+            model_config,
+            diffusion_config,
+            diffusion_hyperparams,
+            trainset_config,
+            project_config,
+            viz_split_config,
          debug=True):
   
     """
@@ -56,6 +68,17 @@ def train(output_directory,
     iters_per_test (int):           number of iterations to inference on test split of the dataset and get scores
     learning_rate (float):          learning rate
     """
+    if rank == 0:
+        wandb.init(project=project_name, name=experiment_name)
+
+    torch.cuda.set_device(rank)
+    dist.init_process_group(backend='nccl', init_method='env://', world_size=num_gpus, rank=rank)
+    random.seed(42 + rank)
+    np.random.seed(42 + rank)
+    torch.manual_seed(42 + rank)
+    torch.cuda.manual_seed_all(42 + rank)
+    print(f"[INFO] Random seeds set for rank {rank}.")
+    print(f"[INFO] Distributed training initialized on rank {rank} with {num_gpus} GPUs.")
     print("data_path", data_path)
     print(f"[INFO] label_path set to: {os.path.join(data_path, 'labels')}")
     print(f"[INFO] data_path set to: {os.path.join(data_path, 'data')}")
@@ -90,9 +113,11 @@ def train(output_directory,
     # predefine model
     print(f"[INFO] Instantiating model SSSD_ECG with config: {model_config}")
     net = SSSD_ECG(**model_config).cuda()
+    net = DDP(net, device_ids=[rank], find_unused_parameters=True)
     total_params = sum(p.numel() for p in net.parameters())
     print(f"Total Parameters: {total_params:,}")
-    wandb.log({"total_params": total_params})
+    if rank == 0:
+        wandb.log({"total_params": total_params})
     
     # define optimizer
     print(f"[INFO] Initializing Adam optimizer with learning rate: {learning_rate}")
@@ -123,15 +148,18 @@ def train(output_directory,
                 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
             print('Successfully loaded model at iteration {}'.format(ckpt_iter))
-            wandb.log({"checkpoint_loaded": ckpt_iter})
+            if rank == 0:
+                wandb.log({"checkpoint_loaded": ckpt_iter})
         except Exception as e:
             ckpt_iter = -1
             print(f'No valid checkpoint model found, start training from initialization try. Error: {e}')
-            wandb.log({"checkpoint_loaded": -1})
+            if rank == 0:
+                wandb.log({"checkpoint_loaded": -1})
     else:
         ckpt_iter = -1
         print('No valid checkpoint model found, start training from initialization.')
-        wandb.log({"checkpoint_loaded": -1})
+        if rank == 0:
+            wandb.log({"checkpoint_loaded": -1})
         
     
     print("net device", next(net.parameters()).device)
@@ -151,7 +179,15 @@ def train(output_directory,
             train_data.append([train_data_temp[i], train_labels[i]])
         print(f"[INFO] train_data loaded: {len(train_data)} samples")
         
-        trainloader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=batch_size, drop_last=True)
+        train_sampler = torch.utils.data.distributed.DistributedSampler(
+            train_data,
+            num_replicas=num_gpus,
+            rank=rank,
+            shuffle=True
+        )
+        each_gpu_batch_size = batch_size // num_gpus
+        print(f"[INFO] Each GPU batch size: {each_gpu_batch_size}, Total batch size: {batch_size}")
+        trainloader = torch.utils.data.DataLoader(train_data, sampler=train_sampler, batch_size=each_gpu_batch_size, drop_last=True)
 
         # Load validate data
         val_data_temp = np.load(os.path.join(data_path, f'{trainset_config["finetune_dataset"]}_val_data.npy'))
@@ -164,8 +200,14 @@ def train(output_directory,
             val_data.append([val_data_temp[i], val_labels[i]])
         print(f"[INFO] val_data loaded: {len(val_data)} samples")
 
-        valloader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, drop_last=False)
-    
+        val_sampler = torch.utils.data.distributed.DistributedSampler(
+            val_data,
+            num_replicas=num_gpus,
+            rank=rank,
+            shuffle=False
+        )
+        valloader = torch.utils.data.DataLoader(val_data, sampler=val_sampler, batch_size=each_gpu_batch_size, drop_last=False)
+
     elif trainset_config["finetune_dataset"] == "mimic_iv":
         print("[INFO] Loading MIMIC-IV dataset")
         train_data = MIMIC_IV_ECG_Dataset(dataset_path=trainset_config['data_path'], usage='train', resample_length=1024, max_samples=1000)
@@ -186,15 +228,16 @@ def train(output_directory,
     print(f"[INFO] index_8: {index_8.tolist()}, index_4: {index_4.tolist()}")
     
     # Log hyperparameters (optional)
-    wandb.config = {
-        "learning_rate": optimizer.param_groups[0]["lr"],
-        "batch_size": trainloader.batch_size if hasattr(trainloader, 'batch_size') else 'Unknown',
-        "n_iters": n_iters,
-        "iters_per_ckpt": iters_per_ckpt,
-        "iters_per_test": iters_per_test,
-        "iters_per_logging": iters_per_logging,
-    }
-    print(f"[INFO] wandb config: {wandb.config}")
+    if rank == 0:
+        wandb.config = {
+            "learning_rate": optimizer.param_groups[0]["lr"],
+            "batch_size": trainloader.batch_size if hasattr(trainloader, 'batch_size') else 'Unknown',
+            "n_iters": n_iters,
+            "iters_per_ckpt": iters_per_ckpt,
+            "iters_per_test": iters_per_test,
+            "iters_per_logging": iters_per_logging,
+        }
+        print(f"[INFO] wandb config: {wandb.config}")
     
     # training
     n_iter = ckpt_iter + 1
@@ -209,6 +252,8 @@ def train(output_directory,
     
     step = 0
     for n_iter in pbar:
+        train_sampler.set_epoch(n_iter)  # Shuffle data differently each epoch
+        val_sampler.set_epoch(n_iter)  # Shuffle data differently each epoch
         for i, (audio, label) in enumerate(trainloader):
             step += 1
             audio = torch.index_select(audio, 1, index_8).float().cuda()
@@ -221,12 +266,14 @@ def train(output_directory,
 
             if trainset_config['loss_fn'] == 'mel_loss':
                 loss, mel, mse, orig_x_signal, reconstructed_x_signal = training_loss_label(net, trainset_config['loss_fn'], X, diffusion_hyperparams)
-                wandb.log({'training loss': loss.item(), 'iteration': n_iter})
-                wandb.log({'mel loss': mel.item(), 'iteration': n_iter})
-                wandb.log({'mse loss': mse.item(), 'iteration': n_iter})
+                if rank == 0:
+                    wandb.log({'training loss': loss.item(), 'iteration': n_iter})
+                    wandb.log({'mel loss': mel.item(), 'iteration': n_iter})
+                    wandb.log({'mse loss': mse.item(), 'iteration': n_iter})
             else:
                 loss = training_loss_label(net, trainset_config['loss_fn'], X, diffusion_hyperparams)
-                wandb.log({'training loss': loss.item(), 'iteration': step})
+                if rank == 0:
+                    wandb.log({'training loss': loss.item(), 'iteration': step})
             
             loss.backward()
             optimizer.step()
@@ -240,14 +287,16 @@ def train(output_directory,
         if n_iter % iters_per_logging == 0:
         # if True:
             print("[LOGGING] iteration: {} \tloss: {}".format(n_iter, loss.item()))
-            wandb.log({"iteration": n_iter, "loss": loss.item()})
+            if rank == 0:
+                wandb.log({"iteration": n_iter, "loss": loss.item()})
             # current_lr = scheduler.get_last_lr()[0]
             # wandb.log({"learning_rate": current_lr, "iteration": n_iter})
             # --- EVALUATION STEP ---
             print("[EVAL] Evaluating model at iteration {}".format(n_iter))
             val_loss = evaluate_model(net, valloader, index_8, diffusion_hyperparams, trainset_config['loss_fn'], debug)
             print(f"[VAL] iteration: {n_iter} \tval_loss: {val_loss}")
-            wandb.log({"iteration": n_iter, "val_loss": val_loss})
+            if rank == 0:
+                wandb.log({"iteration": n_iter, "val_loss": val_loss})
             # Update progress bar with validation loss
             pbar.set_postfix({'loss': f'{loss.item():.6f}', 'val_loss': f'{val_loss:.6f}'})
 
@@ -318,7 +367,8 @@ def train(output_directory,
                 # # save the figure
                 # fig.savefig(os.path.join(save_dir, f"ecg_comparison_{n_iter}_{i}.png"))
                 # # Log the figure to W&B
-                ecg_figs.append(wandb.Image(fig, caption=f"iter{n_iter}_sample{i}"))
+                if rank == 0:
+                    ecg_figs.append(wandb.Image(fig, caption=f"iter{n_iter}_sample{i}"))
             # Log all images as a list
             if trainset_config['loss_fn'] == "mel_loss":
                 ecg_plot_path = f'{trainset_config["data_path"]}/ecg_plot'
@@ -331,24 +381,26 @@ def train(output_directory,
 
                 orig_x_im = plt.imread(original_x_path)
                 recon_x_im = plt.imread(reconstructed_x_path)
-
-                ecg_figs.append(wandb.Image(orig_x_im, caption=f"iter{n_iter}_origin{i}"))
-                ecg_figs.append(wandb.Image(recon_x_im, caption=f"iter{n_iter}_recon{i}"))
-
-            wandb.log({"ecg_comparisons": ecg_figs, "iteration": n_iter})
+                if rank == 0:
+                    ecg_figs.append(wandb.Image(orig_x_im, caption=f"iter{n_iter}_origin{i}"))
+                    ecg_figs.append(wandb.Image(recon_x_im, caption=f"iter{n_iter}_recon{i}"))
+            
+            if rank == 0:
+                wandb.log({"ecg_comparisons": ecg_figs, "iteration": n_iter})
 
         # save checkpoint
         if n_iter > 0 and n_iter % iters_per_ckpt == 0:
             checkpoint_name = '{}.pkl'.format(n_iter)
             print(f"\n[CHECKPOINT] Saving checkpoint: {checkpoint_name}")
-            torch.save({'model_state_dict': net.state_dict(),
+            torch.save({'model_state_dict': net.module.state_dict(),
                         'optimizer_state_dict': optimizer.state_dict()},
                         os.path.join(output_directory, checkpoint_name))
             # Log the model checkpoint as an artifact to W&B
             checkpoint_path = os.path.join(output_directory, checkpoint_name)
             print(f"[CHECKPOINT] to checkpoint path, {checkpoint_path}")
-            wandb.save(checkpoint_path)
-            wandb.log({"checkpoint_saved": n_iter})
+            if rank == 0:
+                wandb.save(checkpoint_path)
+                wandb.log({"checkpoint_saved": n_iter})
             
             # if n_iter % iters_per_test == 0:
             if False:
@@ -413,10 +465,18 @@ def train(output_directory,
     pbar.close()
     
 
+def train_main(gpu_list, **kwargs):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '8764'
+    os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, gpu_list))
+    n_gpus = len(gpu_list)
+    train_rank = partial(train, num_gpus=n_gpus, **kwargs)
+    mp.spawn(train_rank, nprocs=n_gpus)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD-ECG_demographic_71_mel_+a.json',
+    parser.add_argument('-c', '--config', type=str, default='/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD-ECG_demographic_71_mel_+g.json',
                         help='JSON file for configuration')
 
     args = parser.parse_args()
@@ -454,14 +514,24 @@ if __name__ == "__main__":
     print(f"[INFO] project_config: {project_config}")
 
     # log the config
-    wandb.init(project=project_config['project_name'], name=project_config['experiment_name'])
-    print("[INFO] wandb initialized with project and experiment name.")
-    print("config", config)
+    # wandb.init(project=project_config['project_name'], name=project_config['experiment_name'])
+    # print("[INFO] wandb initialized with project and experiment name.")
+    # print("config", config)
 
     # Add visualization split configuration
     global viz_split_config
     viz_split_config = config.get('viz_split_config', {'use_ptbxl': True, "ptbxl_data_path": "/home/shared/zoey_data/ptbxl/condition_15_demographic_v1"})  # Default to PTBXL if not specified
     print(f"[INFO] viz_split_config: {viz_split_config}")
 
-    train(**train_config, **project_config, **viz_split_config)
+    train_main([1,2,3], 
+               **train_config, 
+               **project_config, 
+               **viz_split_config, 
+               trainset_config=trainset_config, 
+               model_config=model_config, 
+               diffusion_config=diffusion_config, 
+               diffusion_hyperparams=diffusion_hyperparams, 
+               project_config=project_config, 
+               viz_split_config=viz_split_config,
+               debug=False)
 

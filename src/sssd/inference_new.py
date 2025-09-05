@@ -89,6 +89,7 @@ def generate(rank,
              diffusion_config,
              diffusion_hyperparams,
              trainset_config,
+             shared_results,
              signal_length=1000,
              chunks_size=400,
              inference_split="test",
@@ -355,7 +356,8 @@ def generate(rank,
     if rank == 0:
         wandb.finish()
     
-    return all_generated, all_labels, synth_data_path
+    if shared_results is not None:
+        shared_results[rank] = (all_generated, all_labels, synth_data_path)
 
 def generate_main(gpu_list, **kwargs):
     os.environ['MASTER_ADDR'] = 'localhost'
@@ -364,26 +366,28 @@ def generate_main(gpu_list, **kwargs):
     num_gpus = len(gpu_list)
     manager = mp.Manager()
     shared_results = manager.dict()
-    generate_rank = partial(generate, num_gpus=num_gpus, **kwargs)
+    generate_rank = partial(generate, num_gpus=num_gpus, shared_results=shared_results, **kwargs)
     # Spawn processes for each GPU
     mp.spawn(generate_rank, nprocs=num_gpus)
     all_generated = []
     all_labels = []
-    synth_data_path_final = ""
+    synth_data_path_final = []
     for rank in range(num_gpus):
-        data, labels, synth_data_path = shared_results.get(rank, ([], []))
+        data, labels, synth_data_path = shared_results[rank]
+        print(type(data), len(data), type(labels), len(labels), type(synth_data_path))
+        print(synth_data_path)
         all_generated.extend(data)
         all_labels.extend(labels)
-        synth_data_path_final = synth_data_path  # same for all ranks
+        synth_data_path_final.append(synth_data_path)  # same for all ranks
     
     all_generated = np.array(all_generated)
     all_labels = np.array(all_labels)
     print(f"Total samples generated across all ranks: {len(all_generated)}")
 
     # save the combined results
-    np.save(os.path.join(synth_data_path_final, f'all_samples.npy'), all_generated)
-    np.save(os.path.join(synth_data_path_final, f'all_labels.npy'), all_labels)
-    print(f"Combined results saved to {synth_data_path_final}")
+    np.save(os.path.join(synth_data_path_final[0], f'all_samples.npy'), all_generated)
+    np.save(os.path.join(synth_data_path_final[0], f'all_labels.npy'), all_labels)
+    print(f"Combined results saved to {synth_data_path_final[0]}")
 
     return all_generated, all_labels
 

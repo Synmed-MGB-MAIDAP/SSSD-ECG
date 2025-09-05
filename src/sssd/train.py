@@ -40,7 +40,7 @@ def train(output_directory,
          experiment_name,
          use_ptbxl,
          ptbxl_data_path,
-         debug=True):
+         debug=False):
   
     """
     Train Diffusion Models
@@ -210,7 +210,6 @@ def train(output_directory,
     step = 0
     for n_iter in pbar:
         for i, (audio, label) in enumerate(trainloader):
-            step += 1
             audio = torch.index_select(audio, 1, index_8).float().cuda()
             label = label.float().cuda()
             
@@ -221,9 +220,9 @@ def train(output_directory,
 
             if trainset_config['loss_fn'] == 'mel_loss':
                 loss, mel, mse, orig_x_signal, reconstructed_x_signal = training_loss_label(net, trainset_config['loss_fn'], X, diffusion_hyperparams)
-                wandb.log({'training loss': loss.item(), 'iteration': n_iter})
-                wandb.log({'mel loss': mel.item(), 'iteration': n_iter})
-                wandb.log({'mse loss': mse.item(), 'iteration': n_iter})
+                wandb.log({'training loss': loss.item(), 'iteration': step})
+                wandb.log({'mel loss': mel.item(), 'iteration': step})
+                wandb.log({'mse loss': mse.item(), 'iteration': step})
             else:
                 loss = training_loss_label(net, trainset_config['loss_fn'], X, diffusion_hyperparams)
                 wandb.log({'training loss': loss.item(), 'iteration': step})
@@ -233,6 +232,7 @@ def train(output_directory,
             # scheduler.step()
             if debug and i>10:
                 break
+            step += 1
         
         # Update progress bar description with current loss
         pbar.set_postfix({'loss': f'{loss.item():.6f}'})

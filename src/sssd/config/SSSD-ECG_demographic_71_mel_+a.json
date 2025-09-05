@@ -26,12 +26,12 @@
         "data_path": "/home/shared/zoey_data/ptbxl/condition_15_demographic_v1",
         "output_directory": "/home/shared/zoey_data/ptbxl/condition_15_demographic_v1",
         "ckpt_iter": "max",
-        "iters_per_ckpt": 1000,
-        "iters_per_logging": 100,
+        "iters_per_ckpt": 30,
+        "iters_per_logging": 10,
         "iters_per_test": 5000,
-        "n_iters": 1,
+        "n_iters": 100000,
         "learning_rate": 4e-4,
-        "batch_size":48
+        "batch_size":52
     },
     "trainset_config":{
         "segment_length":1000,

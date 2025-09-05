@@ -219,7 +219,6 @@ class SSSD_ECG(nn.Module):
             if index[0] <= index[1]:
                 label_class = label[:,index[0]:index[1]+1]
             else:
-                # print(f"label[:,{index[0]}:{index[1]}-1:-1]")
                 label_class = label[:,torch.tensor([index[0], index[1]])]
             embedding_layer = self.embedding_layers[i]
             label_class = label_class.to(device)

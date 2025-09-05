@@ -26,8 +26,8 @@
         "data_path": "/home/shared/zoey_data/ptbxl/condition_15_demographic_v1",
         "output_directory": "/home/shared/zoey_data/ptbxl/condition_15_demographic_v1",
         "ckpt_iter": "max",
-        "iters_per_ckpt": 500,
-        "iters_per_logging": 100,
+        "iters_per_ckpt": 10,
+        "iters_per_logging": 10,
         "iters_per_test": 5000,
         "n_iters": 100000,
         "learning_rate": 4e-4,
@@ -43,7 +43,8 @@
     "gen_config":{
         "output_directory": "/home/shared/zoey_data/ptbxl/condition_15_demographic_v1",
         "ckpt_path": "/home/shared/zoey_data/ptbxl/condition_15_demographic_v1",
-        "inference_split": "test"
+        "inference_split": "test",
+        "chunk_size": 700
     },
     "project_config": {
         "project_name": "SSSD-ECG",

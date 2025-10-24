@@ -1,0 +1,22 @@
+# Core packages
+numpy
+pandas
+scipy
+torch
+torchvision  
+torchaudio
+
+# Scientific computing and image processing
+scikit-image
+tqdm
+pathlib
+
+# ECG-specific packages
+wfdb
+resampy
+h5py
+ishneholterlib
+
+
+# Optional (commented out in original code)
+# joblib

@@ -33,14 +33,14 @@ def train(output_directory,
           data_path,
           iters_per_ckpt,
           iters_per_logging,
-          iters_per_test,
+          #iters_per_test,
           learning_rate,
          batch_size,
          project_name,
          experiment_name,
          use_ptbxl,
          ptbxl_data_path,
-         debug=False):
+         debug=True):
   
     """
     Train Diffusion Models
@@ -191,7 +191,7 @@ def train(output_directory,
         "batch_size": trainloader.batch_size if hasattr(trainloader, 'batch_size') else 'Unknown',
         "n_iters": n_iters,
         "iters_per_ckpt": iters_per_ckpt,
-        "iters_per_test": iters_per_test,
+        # "iters_per_test": iters_per_test,
         "iters_per_logging": iters_per_logging,
     }
     print(f"[INFO] wandb config: {wandb.config}")
@@ -445,7 +445,7 @@ if __name__ == "__main__":
     diffusion_hyperparams = calc_diffusion_hyperparams(**diffusion_config)  # dictionary of all diffusion hyperparameters
     print(f"[INFO] diffusion_hyperparams keys: {list(diffusion_hyperparams.keys())}")
 
-    global model_config
+    global model_config # removed label_embed_dim from the model_config
     model_config = config['wavenet_config']
     print(f"[INFO] model_config: {model_config}")
 
@@ -460,7 +460,7 @@ if __name__ == "__main__":
 
     # Add visualization split configuration
     global viz_split_config
-    viz_split_config = config.get('viz_split_config', {'use_ptbxl': True, "ptbxl_data_path": "/home/shared/zoey_data/ptbxl/condition_15_demographic_v1"})  # Default to PTBXL if not specified
+    viz_split_config = config.get('viz_split_config', {'use_ptbxl': True, "ptbxl_data_path": "/home/nutansahoo/MGB-MAIDAP/models/SSSD-ECG/src/ptb_xl/processed_ptb_xl_fs100"})  # Default to PTBXL if not specified
     print(f"[INFO] viz_split_config: {viz_split_config}")
 
     train(**train_config, **project_config, **viz_split_config)

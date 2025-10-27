@@ -201,7 +201,8 @@ def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
         mel_loss = MelSpectrogramLoss(window_lengths=[512, 256], n_mels=[64, 128], loss_fn=torch.nn.L1Loss()).to(device)  
 
         #reconstructing x
-        reconstructed_x = (transformed_X - (1-Alpha[diffusion_steps])/torch.sqrt(1-Alpha_bar[diffusion_steps]) * epsilon_theta) / torch.sqrt(Alpha[diffusion_steps])   
+        # reconstructed_x = (transformed_X - (1-Alpha[diffusion_steps])/torch.sqrt(1-Alpha_bar[diffusion_steps]) * epsilon_theta) / torch.sqrt(Alpha[diffusion_steps])  
+        reconstructed_x = (transformed_X - torch.sqrt(1-Alpha_bar[diffusion_steps])*epsilon_theta)/torch.sqrt(Alpha_bar[diffusion_steps]) 
         #calculate mel loss
         orig_x_signal = ECGSignal(audio, sample_rate = 100)
         reconstructed_x_signal = ECGSignal(reconstructed_x, sample_rate = 100)

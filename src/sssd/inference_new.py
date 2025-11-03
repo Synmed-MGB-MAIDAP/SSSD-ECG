@@ -14,6 +14,11 @@ import matplotlib.pyplot as plt
 import wandb
 import pdb
 
+import torch.multiprocessing as mp
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from functools import partial
+
 
 def generate_four_leads(tensor):
     leadI = tensor[:,0,:].unsqueeze(1)
@@ -72,14 +77,24 @@ def plot_signal_pairs(real_signals, generated_signals, save_dir, chunk_idx, num_
         plt.close(fig)
 
 
-def generate(output_directory,
+def generate(rank,
+             num_gpus,
+             output_directory,
              num_samples,
              ckpt_path,
              data_path,
              ckpt_iter,
              experiment_name,
+             model_config,
+             diffusion_config,
+             diffusion_hyperparams,
+             trainset_config,
+             shared_results,
+             signal_length=1000,
+             chunks_size=400,
              inference_split="test",
-             seed=0):
+             seed=0,
+             plot=False):
     
     """
     Generate data based on ground truth 
@@ -92,29 +107,23 @@ def generate(output_directory,
                                       automitically selects the maximum iteration if 'max' is selected
     data_path (str):                  path to dataset, numpy array.
     """
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    torch.cuda.manual_seed(seed)
-    random.seed(seed)
-
-
-    output_directory = "/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16/condition_mimic_15_lr_6e-4_bs16_eval_mimic_2/ch256_T200_betaT0.02/val_during_train_data0"
-    # ckpt_path = "/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16/condition_mimic_15_lr_6e-4_bs16_eval_mimic_2/ch256_T200_betaT0.02/val_during_train_data0"
-    ckpt_path = '/home/zoeyhuang/output/test_checkpoints/SSSD_ECG_MIMIC_IV'
-    experiment_name = ""
-    inference_split = "val"
-    # trainset_config["finetune_dataset"] = "ptbxl_all"
-    chunks_size = 400  # Number of samples per chunk
-    print("num_samples: ", num_samples)
+    
+    torch.cuda.set_device(rank)
+    dist.init_process_group(backend='nccl', init_method='env://', world_size=num_gpus, rank=rank)
+    random.seed(seed + rank)
+    np.random.seed(seed + rank)
+    torch.cuda.manual_seed(seed + rank)
+    random.seed(seed + rank)
 
     # Initialize wandb for visualization
-    wandb.init(project="sssd-ecg-inference", name=f"{experiment_name}_inference_{ckpt_iter}")
+    if rank == 0:
+        wandb.init(project="sssd-ecg-inference", name=f"{experiment_name}_inference_{ckpt_iter}")
 
     # generate experiment (local) path
     local_path = "{}/ch{}_T{}_betaT{}".format(experiment_name, model_config["res_channels"], 
                                            diffusion_config["T"], 
                                            diffusion_config["beta_T"])
-    local_path = experiment_name
+    
     # Get shared output_directory ready
     output_directory = os.path.join(output_directory, local_path)
     if not os.path.isdir(output_directory):
@@ -129,32 +138,32 @@ def generate(output_directory,
 
     # predefine model
     net = SSSD_ECG(**model_config).cuda()
-    print_size(net)
+    # print_size(net)
 
     # load checkpoint
     ckpt_path = os.path.join(ckpt_path, local_path)
     if ckpt_iter == 'max':
         ckpt_iter = find_max_epoch(ckpt_path)
-    #model_path = os.path.join(ckpt_path, '{}.pkl'.format(ckpt_iter))
-    #model_path = os.path.join(ckpt_path, 'sssd_ecg_model.pth')
-    model_path = os.path.join(ckpt_path, '100000.pkl')
-    # pdb.set_trace()
+    
+    model_path = os.path.join(ckpt_path, '{}.pkl'.format(ckpt_iter))
+
+    print('Loading model from %s' % model_path)
 
     try:
-        print('Loading model from %s' % model_path)
         checkpoint = torch.load(model_path, map_location='cpu')
         #net.load_state_dict(checkpoint)
         net.load_state_dict(checkpoint['model_state_dict'])
+        net = DDP(net, device_ids=[rank], find_unused_parameters=True)
         print('Successfully loaded model at iteration {}'.format(ckpt_iter))
-    except:
-        raise Exception('No valid model found')
+    except Exception as e:
+        raise Exception(f'Loading model failed at {model_path} because {e}')
 
     # Define the same lead selection as in training
     index_8 = torch.tensor([0,2,3,4,5,6,7,11])
     index_4 = torch.tensor([1,8,9,10])
 
     # Load data based on dataset type
-    if trainset_config["finetune_dataset"] == "ptbxl_all":
+    if trainset_config["finetune_dataset"] == "ptbxl":
         print("Loading PTBXL dataset")
         label_path = os.path.join(data_path, 'labels')
         data_path = os.path.join(data_path, 'data')
@@ -163,20 +172,26 @@ def generate(output_directory,
         real_data = np.load(os.path.join(data_path, f'ptbxl_{inference_split}_data.npy'))
         labels = np.load(os.path.join(label_path, f'ptbxl_{inference_split}_labels.npy'))
         
+        # Split the real data and labels into world_size parts and only keep the part for this rank
+        total_size = len(labels)
+        per_rank_size = total_size // num_gpus
+        start_idx = rank * per_rank_size
+        end_idx = (rank + 1) * per_rank_size if rank != num_gpus - 1 else total_size
+        real_data = real_data[start_idx:end_idx]
+        labels = labels[start_idx:end_idx]
+
         print("Loaded data from ", os.path.join(data_path, f'ptbxl_{inference_split}_data.npy'))
         print("Loaded labels from ", os.path.join(label_path, f'ptbxl_{inference_split}_labels.npy'))
-        print("Number of samples: ", len(labels))
-        print("Each label shape: ", labels[0].shape)
+        print("Number of samples: ", len(labels), rank)
+        print("Each label shape: ", labels[0].shape, rank)
         
         # break down labels into chunks
         chunks = []
-        for i in range(0, len(labels), chunks_sizes):
+        for i in range(0, len(labels), chunks_size):
             if i + chunks_size <= len(labels):
                 chunks.append(labels[i:i+chunks_size])
             else:
                 chunks.append(labels[i:])
-        
-        signal_length = 1000  # PTBXL signal length
         
     elif trainset_config["finetune_dataset"] == "mimic_iv":
         print("Loading MIMIC-IV dataset")
@@ -196,10 +211,18 @@ def generate(output_directory,
             labels.append(label.numpy())
         real_data = np.stack(real_data)
         labels = np.stack(labels)
-        
-        print("Number of samples: ", len(labels))
-        print("Each label shape: ", labels[0].shape)
-        
+
+        # Split the real data and labels into world_size parts and only keep the part for this rank
+        total_size = len(labels)
+        per_rank_size = total_size // num_gpus
+        start_idx = rank * per_rank_size
+        end_idx = (rank + 1) * per_rank_size if rank != num_gpus - 1 else total_size
+        real_data = real_data[start_idx:end_idx]
+        labels = labels[start_idx:end_idx]
+
+        print("Number of samples: ", len(labels), rank)
+        print("Each label shape: ", labels[0].shape, rank)
+
         # break down labels into chunks
         chunks = []
         for i in range(0, len(labels), chunks_size):
@@ -207,8 +230,6 @@ def generate(output_directory,
                 chunks.append(labels[i:i+chunks_size])
             else:
                 chunks.append(labels[i:])
-        
-        signal_length = 1024  # MIMIC-IV signal length
     
     print("Starting generation")
     tik = time.time()
@@ -218,91 +239,88 @@ def generate(output_directory,
     real_data_inferenced = []
     
     # Create directory for intermediate plots
-    plot_dir = os.path.join(ckpt_path, f"synth_{inference_split}_plots")
+    plot_dir = os.path.join(ckpt_path, f"synth_{inference_split}_plots_{ckpt_iter}_rank{rank}")
     os.makedirs(plot_dir, exist_ok=True)
-    
-    for i, label in enumerate(chunks):
-        print(f"Processing chunk {i+1}/{len(chunks)}")
-        cond = torch.from_numpy(label).cuda().float()
+    synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_{ckpt_iter}_rank{rank}")
+    os.makedirs(synth_data_path, exist_ok=True)
 
-        # inference
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        start.record()
+    with torch.no_grad():
+        for i, label in enumerate(chunks):
+            print(f"Processing chunk {i+1}/{len(chunks)} of rank {rank}")
+            cond = torch.from_numpy(label).cuda().float()
 
-        # Get corresponding real data for this chunk
-        start_idx = i * chunks_size
-        end_idx = min(start_idx + num_samples, len(real_data))
-        chunk_real_data = real_data[start_idx:end_idx,:]
-        cond = cond[:num_samples, :]
+            # inference
+            start = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+            start.record()
 
-        real_audio = torch.from_numpy(chunk_real_data).float()
-        real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
+            # Get corresponding real data for this chunk
+            start_idx = i * chunks_size
+            num_samples = min(chunks_size, num_samples)
+            end_idx = min(start_idx + num_samples, len(real_data))
+            chunk_real_data = real_data[start_idx:end_idx,:]
+            cond = cond[:num_samples, :]
+
+            print("chunk_real_data shape: ", chunk_real_data.shape, rank)
+            print("cond shape: ", cond.shape, rank)
+
+            real_audio = torch.from_numpy(chunk_real_data).float()
+            real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
+
+            print(f"Generating {len(cond)} samples for chunk {i} of rank {rank}")
+
+            generated_audio = sampling_label(net, real_audio8.shape, 
+                                diffusion_hyperparams,
+                                cond=cond)
+            
+            # Generate 12 leads
+            generated_audio12 = generate_four_leads(generated_audio)
+
+            end.record()
+            torch.cuda.synchronize()
+            print(f'Generated {len(cond)} samples in {int(start.elapsed_time(end)/1000)} seconds on rank {rank}')
         
-        print(f"Generating {num_samples} samples for chunk {i}")
-
-        # sanity check
-        real_audio = np.load("/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16/condition_mimic_15_lr_6e-4_bs16_eval_mimic_2/ch256_T200_betaT0.02/val_during_train_data0/real_audio_0_0.npy")
-        real_audio = torch.from_numpy(real_audio).float()
-        real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
-        cond = np.load("/home/zoeyhuang/output/condition_mimic_15_lr_6e-4_bs16/condition_mimic_15_lr_6e-4_bs16_eval_mimic_2/ch256_T200_betaT0.02/val_during_train_data0/real_label_0_0.npy")
-        cond = torch.from_numpy(cond).float()
-        # print("real_audio shape: ", real_audio8.shape)
-        # print("cond shape: ", cond.shape)
-        pdb.set_trace()
-        # Generate with the appropriate signal length
-        generated_audio = sampling_label(net, real_audio8.shape, 
-                               diffusion_hyperparams,
-                               cond=cond)
-        
-        # Generate 12 leads
-        generated_audio12 = generate_four_leads(generated_audio)
-
-        end.record()
-        torch.cuda.synchronize()
-        print(f'Generated {num_samples} samples in {int(start.elapsed_time(end)/1000)} seconds')
-        
-        # Plot intermediate results
-        plot_signal_pairs(
-            real_audio.detach().cpu().numpy(),
-            generated_audio12.detach().cpu().numpy(),
-            plot_dir,
-            i,
-            num_samples=len(real_audio)  # Plot 5 random samples per chunk
-        )
-        
-        # Log some samples to wandb
-        if i % 2 == 0:  # Log every other chunk to avoid too many plots
-            for j in range(min(3, len(chunk_real_data))):
-                fig = plot_ecg_comparison(
-                    chunk_real_data[j],
-                    generated_audio12[j].detach().cpu().numpy(),
-                    label=f"chunk{i}_sample{j}",
-                    return_fig=True
+            # Plot intermediate results
+            if plot:
+                plot_signal_pairs(
+                    real_audio.detach().cpu().numpy(),
+                    generated_audio12.detach().cpu().numpy(),
+                    plot_dir,
+                    i,
+                    num_samples=len(cond)  # Plot 5 random samples per chunk
                 )
-                wandb.log({
-                    f"chunk{i}_sample{j}": wandb.Image(fig),
-                    "chunk": i,
-                    "sample": j
-                })
-                plt.close(fig)
+        
+            # Log some samples to wandb
+            if plot and i % 2 == 0:  # Log every other chunk to avoid too many plots
+                for j in range(min(3, len(chunk_real_data))):
+                    fig = plot_ecg_comparison(
+                        chunk_real_data[j],
+                        generated_audio12[j].detach().cpu().numpy(),
+                        label=f"chunk{i}_sample{j}_rank{rank}",
+                        return_fig=True
+                    )
+                    if rank == 0:
+                        wandb.log({
+                            f"chunk{i}_sample{j}_rank{rank}": wandb.Image(fig),
+                            "chunk": i,
+                            "sample": j
+                        })
+                    plt.close(fig)
 
-        # Save chunk results
-        all_generated.append(generated_audio12.detach().cpu().numpy())
-        all_labels.append(cond.detach().cpu().numpy())
-        real_data_inferenced.append(real_audio.detach().cpu().numpy())
+            # Save chunk results
+            all_generated.append(generated_audio12.detach().cpu().numpy())
+            all_labels.append(cond.detach().cpu().numpy())
+            real_data_inferenced.append(real_audio.detach().cpu().numpy())
         
-        # Save intermediate results
-        outfile = f'{i}_samples.npy'
-        synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_{ckpt_iter}")
-        if not os.path.exists(synth_data_path):
-            os.makedirs(synth_data_path)
-        new_out = os.path.join(synth_data_path, outfile)
-        np.save(new_out, generated_audio12.detach().cpu().numpy())
-        
-        outfile = f'{i}_labels.npy'
-        new_out = os.path.join(synth_data_path, outfile)
-        np.save(new_out, cond.detach().cpu().numpy())
+            # Save intermediate results
+            if plot:
+                outfile = f'{i}_samples_{rank}.npy'
+                new_out = os.path.join(synth_data_path, outfile)
+                np.save(new_out, generated_audio12.detach().cpu().numpy())
+
+                outfile = f'{i}_labels_{rank}.npy'
+                new_out = os.path.join(synth_data_path, outfile)
+                np.save(new_out, cond.detach().cpu().numpy())
 
     # Combine all chunks
     all_generated = np.concatenate(all_generated, axis=0)
@@ -310,23 +328,23 @@ def generate(output_directory,
     real_data_inferenced = np.concatenate(real_data_inferenced, axis=0)
 
     # Save complete results
-    synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_{ckpt_iter}")
-    np.save(os.path.join(synth_data_path, 'all_samples.npy'), all_generated)
-    np.save(os.path.join(synth_data_path, 'all_labels.npy'), all_labels)
-    
+    np.save(os.path.join(synth_data_path, f'all_samples_{rank}.npy'), all_generated)
+    np.save(os.path.join(synth_data_path, f'all_labels_{rank}.npy'), all_labels)
+
     # Save real data for comparison
-    np.save(os.path.join(synth_data_path, 'real_data.npy'), real_data)
-    
+    np.save(os.path.join(synth_data_path, f'real_data_{rank}.npy'), real_data)
+
     # Plot final comparison of random samples
-    final_plot_dir = os.path.join(plot_dir, 'final_comparison')
-    os.makedirs(final_plot_dir, exist_ok=True)
-    plot_signal_pairs(
-        real_data,
-        all_generated,
-        final_plot_dir,
-        'final',
-        num_samples=num_samples  # Plot 10 random samples from the complete dataset
-    )
+    if plot:
+        final_plot_dir = os.path.join(plot_dir, f'final_comparison_{ckpt_iter}_rank{rank}')
+        os.makedirs(final_plot_dir, exist_ok=True)
+        plot_signal_pairs(
+            real_data,
+            all_generated,
+            final_plot_dir,
+            'final',
+            num_samples=num_samples  # Plot 10 random samples from the complete dataset
+        )
     
     tok = time.time()
     print("Total time taken: ", tok-tik)
@@ -335,15 +353,51 @@ def generate(output_directory,
     print(f"Plots saved to {plot_dir}")
     
     # Close wandb
-    wandb.finish()
+    if rank == 0:
+        wandb.finish()
+    
+    if shared_results is not None:
+        shared_results[rank] = (all_generated, all_labels, synth_data_path)
+
+def generate_main(gpu_list, **kwargs):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+    os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, gpu_list))
+    num_gpus = len(gpu_list)
+    manager = mp.Manager()
+    shared_results = manager.dict()
+    generate_rank = partial(generate, num_gpus=num_gpus, shared_results=shared_results, **kwargs)
+    # Spawn processes for each GPU
+    mp.spawn(generate_rank, nprocs=num_gpus)
+    all_generated = []
+    all_labels = []
+    synth_data_path_final = []
+    for rank in range(num_gpus):
+        data, labels, synth_data_path = shared_results[rank]
+        print(type(data), len(data), type(labels), len(labels), type(synth_data_path))
+        print(synth_data_path)
+        all_generated.extend(data)
+        all_labels.extend(labels)
+        synth_data_path_final.append(synth_data_path)  # same for all ranks
+    
+    all_generated = np.array(all_generated)
+    all_labels = np.array(all_labels)
+    print(f"Total samples generated across all ranks: {len(all_generated)}")
+
+    # save the combined results
+    np.save(os.path.join(synth_data_path_final[0], f'all_samples.npy'), all_generated)
+    np.save(os.path.join(synth_data_path_final[0], f'all_labels.npy'), all_labels)
+    print(f"Combined results saved to {synth_data_path_final[0]}")
+
+    return all_generated, all_labels
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', type=str, default='/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD_ECG_demographic_cond_interpolate_15_onehot_mimic_hypertuned_inf_mimic.json',
+    parser.add_argument('-c', '--config', type=str, default='/home/zoeyhuang/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD_ECG_demographic_71_mel_+g_inf.json',
                         help='JSON file for configuration')
-    parser.add_argument('-ckpt_iter', '--ckpt_iter', default=10000,
+    parser.add_argument('-ckpt_iter', '--ckpt_iter', default="max",
                         help='Which checkpoint to use; assign a number or "max"')
-    parser.add_argument('-n', '--num_samples', type=int, default=50,
+    parser.add_argument('-n', '--num_samples', type=int, default=2000,
                         help='Number of utterances to be generated')
     args = parser.parse_args()
 
@@ -354,8 +408,6 @@ if __name__ == "__main__":
     print(config)
 
     gen_config = config['gen_config']
-    train_config = config["train_config"]  # training parameters
-    global trainset_config
     trainset_config = config["trainset_config"]  # to load trainset
     global diffusion_config
     diffusion_config = config["diffusion_config"]  # basic hyperparameters
@@ -365,10 +417,17 @@ if __name__ == "__main__":
     model_config = config['wavenet_config']
     experiment_name = config['project_config']['experiment_name']
     
-    seed=0
-    generate(**gen_config,
+    seed=42
+    generate_main(
+            [1,2,3],
+            **gen_config,
             ckpt_iter=args.ckpt_iter,
             num_samples=args.num_samples,
             experiment_name=experiment_name,
             data_path=trainset_config["data_path"],
-            seed=seed)
+            seed=seed,
+            model_config=model_config,
+            diffusion_config=diffusion_config,
+            diffusion_hyperparams=diffusion_hyperparams,
+            trainset_config=trainset_config
+        )

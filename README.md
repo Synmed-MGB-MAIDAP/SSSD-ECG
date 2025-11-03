@@ -13,7 +13,10 @@ This is the official repository for the paper [Diffusion-based Conditional ECG G
 
 ![alt text](https://github.com/AI4HealthUOL/SSSD-ECG/blob/main/clinical%20evaluation/diagnosis%20on%20normal%20samples/plots/reports/SSSD.png?style=centerme)
 
-
+Note: You can  pytorch using the command as the version mentioned in `environment.yaml` no longer works:
+```
+pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
+```
 ### Please cite our publication if you found our research to be helpful.
 
 ```bibtex

@@ -12,8 +12,8 @@ from sssd.utils.demographics_mapping import map_heartrate
 threshold_version = "condition_15_demographic"
 
 target_fs=100 # sampling rate (100 Hz or 500 Hz)
-data_folder_ptb_xl = Path("/home/shared/physionet.org/files/ptb-xl/1.0.3")
-target_folder_ptb_xl = Path(f"/home/shared/ptbxl_data_sssd-ecg/{threshold_version}") 
+data_folder_ptb_xl = Path("/home/shared/data/ptbxl/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.3")
+target_folder_ptb_xl = Path(f"/home/shared/zoey_data/ptbxl/{threshold_version}") 
 
 # v1 rough thresholds 90
 thresholds_v1 = {
@@ -45,7 +45,6 @@ threshold_all = {
     "weight": [50, 70, 90, 110],
     "height": [150, 159, 169, 179],
     "bmi": [18.5, 25, 30, 35, 40]
-}
 
 thresholds_15 = {
     "15": "Yes",
@@ -76,12 +75,6 @@ df_ptb_xl, lbl_itos_ptb_xl,  mean_ptb_xl, std_ptb_xl = prepare_data_ptb_xl(data_
 #reformat everything as memmap for efficiency
 reformat_as_memmap(df_ptb_xl, target_folder_ptb_xl/("memmap.npy"),data_folder=target_folder_ptb_xl,delete_npys=True)
 
-# print("df_ptb_xl columns", df_ptb_xl.columns)
-
-# print the first dataline of the dataframe
-# print("df_ptb_xl first dataline", df_ptb_xl.iloc[0])
-
-# check all the columns and the datatypes
 # print("df_ptb_xl dtypes", df_ptb_xl.dtypes)
 
 input_size = 1000  # Sample length
@@ -186,15 +179,15 @@ train_data_npy = []
 train_label_npy = []
 for i in range(len(ds_train)):
     train_data_npy.append(ds_train[i].data)
-    # print("train_data_npy", train_data_npy[-1].shape)
+    # Extract age, gender, heartrate from df_train
+    age_val = df_train.iloc[i]["age"] if "age" in df_train.columns else 0.0
+    gender_val = 1.0 if str(df_train.iloc[i]["sex"]).lower() == "male" else 0.0
     hr, n_peaks, _ = calculate_heart_rate(ds_train[i].data)
-    if hr is None:
-        hr_tensor = torch.tensor(0.0)  # or some default/fallback
-    else:
-        hr_tensor = torch.tensor(map_heartrate(hr))
-    # print("hr_tensor", hr_tensor.shape)
-    # print("ds_train[i].label", ds_train[i].label.shape)
-    train_label = torch.cat([torch.tensor(ds_train[i].label), hr_tensor])
+    heartrate_val = hr if hr is not None else 0.0
+    train_label = torch.cat([
+        torch.tensor(ds_train[i].label),
+        torch.tensor([age_val, gender_val, heartrate_val])
+    ])
     train_label_npy.append(train_label)
 
 train_data_npy = np.array(train_data_npy)
@@ -214,12 +207,14 @@ val_data_npy = []
 val_label_npy = []
 for i in range(len(ds_val)):
     val_data_npy.append(ds_val[i].data)
+    age_val = df_val.iloc[i]["age"] if "age" in df_val.columns else 0.0
+    gender_val = 1.0 if str(df_val.iloc[i]["sex"]).lower() == "male" else 0.0
     hr, n_peaks, _ = calculate_heart_rate(ds_val[i].data)
-    if hr is None:
-        hr_tensor = torch.tensor(0.0)  # or some default/fallback
-    else:
-        hr_tensor = torch.tensor(map_heartrate(hr))
-    val_label = torch.cat([torch.tensor(ds_val[i].label), hr_tensor])
+    heartrate_val = hr if hr is not None else 0.0
+    val_label = torch.cat([
+        torch.tensor(ds_val[i].label),
+        torch.tensor([age_val, gender_val, heartrate_val])
+    ])
     val_label_npy.append(val_label)
 
 val_data_npy = np.array(val_data_npy)
@@ -235,12 +230,14 @@ test_data_npy = []
 test_label_npy = []
 for i in range(len(ds_test)):
     test_data_npy.append(ds_test[i].data)
+    age_val = df_test.iloc[i]["age"] if "age" in df_test.columns else 0.0
+    gender_val = 1.0 if str(df_test.iloc[i]["sex"]).lower() == "male" else 0.0
     hr, n_peaks, _ = calculate_heart_rate(ds_test[i].data)
-    if hr is None:
-        hr_tensor = torch.tensor(0.0)  # or some default/fallback
-    else:
-        hr_tensor = torch.tensor(map_heartrate(hr))
-    test_label = torch.cat([torch.tensor(ds_test[i].label), hr_tensor])
+    heartrate_val = hr if hr is not None else 0.0
+    test_label = torch.cat([
+        torch.tensor(ds_test[i].label),
+        torch.tensor([age_val, gender_val, heartrate_val])
+    ])
     test_label_npy.append(test_label)
 test_data_npy = np.array(test_data_npy)
 test_label_npy = np.array(test_label_npy)

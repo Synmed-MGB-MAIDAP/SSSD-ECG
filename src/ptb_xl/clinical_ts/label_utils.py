@@ -52,24 +52,27 @@ diffusets_label_transform = {
     }
 
 
-def one_hot_to_str(label, label_order):
-    label_str = []
-    if len(label.shape) == 2:
+def one_hot_to_str(label: np.ndarray, label_order_list: list[str]) -> str:
+    """Convert a multi-hot vector into a '-' joined label string."""
+    if label.ndim == 2:
+        assert label.shape[0] == 1, "Expect shape (1, K) or (K,)"
         label = label[0]
-    # print("len label", len(label))
-    assert len(label) == len(label_order)
-    for i, l in enumerate(label):
-        if l == 1:
-            label_str.append(label_order[i])
-    # print(label_str)
-    return "-".join(label_str)
+    assert len(label) == len(label_order_list), "length mismatch"
+    names = [label_order_list[i] for i, v in enumerate(label) if v == 1]
+    return "-".join(names)
 
-def str_to_one_hot(label_str, label_order):
-    label = np.zeros(len(label_order))
-    label_str_list = label_str.split("-")
-    for index, label_name in enumerate(label_order):
-        if label_name in label_str:
-            label[index] = 1
+def str_to_one_hot(label_str: str, label_order_list: list[str]) -> np.ndarray:
+    """Strict string-to-multi-hot conversion (fixes substring matching bug)."""
+    label = np.zeros(len(label_order_list), dtype=int)
+    if not label_str:
+        return label
+    # Split strictly by delimiter, no substring matching
+    label_items = label_str.split("-")
+    # Normalize to uppercase for consistency
+    label_items_upper = {s.upper() for s in label_items if s}
+    for idx, name in enumerate(label_order_list):
+        if name.upper() in label_items_upper:
+            label[idx] = 1
     return label
 
 def check_label_equal(label1, label_order1, label2, label_order2):
@@ -78,8 +81,43 @@ def check_label_equal(label1, label_order1, label2, label_order2):
     print(label1_str, label2_str)
     return set(label1_str.split("-")) == set(label2_str.split("-"))
 
+# === 71→15 relabeling ===
 
-def relabel_71_to_15(one_hot_labels_71, labels_15, new_label_order):
+def _build_group_index_map(groups: list[list[str]], full_order: list[str]) -> list[list[int]]:
+    """Build index map of each group in the full order list for efficient folding."""
+    pos = {name: i for i, name in enumerate(full_order)}
+    idx_map = []
+    for group in groups:
+        idxs = []
+        for gname in group:
+            if gname not in pos:
+                raise ValueError(f"Label '{gname}' not found in provided order.")
+            idxs.append(pos[gname])
+        idx_map.append(idxs)
+    return idx_map
+
+# Precompute: indices of 15 groups in new_label_order
+GROUP_INDEXES_IN_71 = _build_group_index_map(labels_15, new_label_order)
+
+def relabel_71_to_15(onehot_71: np.ndarray) -> np.ndarray:
+    """
+    Fold a (K=71) multi-hot vector into (15).
+    Supports (71,) or (X,71) input; returns (15,).
+    Rule: if any label in a group is 1, the group is 1.
+    """
+    if onehot_71.ndim == 2:
+        assert onehot_71.shape[0] == 1 and onehot_71.shape[1] == len(new_label_order), "Expect shape (1,71)"
+        vec = onehot_71[0]
+    else:
+        assert onehot_71.shape[0] == len(new_label_order), "Expect length 71"
+        vec = onehot_71
+    out = np.zeros(len(labels_15), dtype=int)
+    for i, idxs in enumerate(GROUP_INDEXES_IN_71):
+        if np.any(vec[idxs] == 1):
+            out[i] = 1
+    return out
+
+def relabel_71_to_15_batch(one_hot_labels_71, labels_15, new_label_order):
     """
     Converts 71 one-hot encoded labels into 15 one-hot encoded labels.
     
@@ -111,6 +149,22 @@ def relabel_71_to_15(one_hot_labels_71, labels_15, new_label_order):
                         one_hot_labels_15[i, new_label_idx] = 1
 
     return one_hot_labels_15
+
+# === End-to-end: from original 71-label list → 15 shortname list ===
+
+def labels71_to_labels15_shortnames(raw_labels: list[str]) -> list[str]:
+    """
+    Input: one sample's original label list, e.g. ["SR", "PVC", "IMI"]
+    Output: 15-class shortname list, e.g. ["sn", "pvc", "mi"]
+    """
+    # 1) Join to string for strict matching
+    joined = "-".join(raw_labels)
+    onehot_71 = str_to_one_hot(joined, new_label_order)
+    # 2) Fold 71 → 15
+    onehot_15 = relabel_71_to_15(onehot_71)
+    # 3) 15 one-hot → shortname string → list
+    short_str = one_hot_to_str(onehot_15, label_15)  # e.g. "sn-pvc-mi"
+    return short_str.split("-") if short_str else []
 
 # Example usage:
 # Assuming `one_hot_labels_71` is your (2000, 71) numpy array

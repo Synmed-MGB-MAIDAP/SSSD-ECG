@@ -219,15 +219,20 @@ def train(
     print(f"[INFO] Starting training loop from iteration {n_iter} to {n_iters}")
     
     # Create tqdm progress bar
-    pbar = tqdm(range(n_iter, n_iters + 1), 
-                initial=n_iter - (ckpt_iter + 1), 
-                total=n_iters - (ckpt_iter + 1),
-                desc="Training",
-                unit="iter")
+    pbar = tqdm(range(n_iter, n_iters + 1),
+            initial=n_iter,
+            total=n_iters + 1,
+            desc="Training",
+            unit="iter")
     
     running_train_loss = 0.0
+    running_mel_loss = 0.0
+    running_mse_loss = 0.0
+    
     while n_iter < n_iters:
         epoch_loss = 0.0
+        epoch_mel_loss = 0.0
+        epoch_mse_loss = 0.0
         
         for i, (audio, label) in enumerate(trainloader):
             audio = torch.index_select(audio, 1, index_8).float().cuda()
@@ -247,8 +252,14 @@ def train(
                 loss = training_loss_label(net, trainset_config['loss_fn'], X, diffusion_hyperparams)
                 wandb.log({'step_train_loss': loss.item()}, step=n_iter)
 
+            # accumulate train loss
             epoch_loss += loss.item()
             running_train_loss += loss.item()
+            if trainset_config['loss_fn'] == 'mel_loss':
+                running_mel_loss += mel.item()
+                running_mse_loss += mse.item()
+                epoch_mel_loss += mel.item()
+                epoch_mse_loss += mse.item()
             
             loss.backward()
             optimizer.step()
@@ -256,14 +267,26 @@ def train(
                 scheduler.step()
             
             # if debug and i>10:
+            #     warn("\n\n\n\t\t==============================================\nDebug mode: Breaking after 10 batches\n\n\n\t\t==============================================\n")
             #     break            
             
             # ================== Step/n_iter level code ==================
             if n_iter % iters_per_logging == 0:                                
                 # # --- RUNNING TRAIN LOSS ---
                 running_train_loss /= iters_per_logging
-                print(f"Running train loss iteration: {n_iter} \ttrain_loss: {running_train_loss}")
-                wandb.log({"running_train_loss": running_train_loss}, step=n_iter)
+                running_loss_dict = {"running_train_loss": running_train_loss}
+                if trainset_config['loss_fn'] == 'mel_loss':
+                    running_mel_loss /= iters_per_logging
+                    running_mse_loss /= iters_per_logging
+                    running_loss_dict.update({
+                        "running_mel_loss": running_mel_loss,
+                        "running_mse_loss": running_mse_loss
+                    })
+                    # reset mel and mse loss
+                    running_mel_loss = 0.0
+                    running_mse_loss = 0.0
+                print(f"Running train loss iteration: {n_iter} \t: {running_loss_dict}")
+                wandb.log(running_loss_dict, step=n_iter)
                 running_train_loss = 0.0
 
                 # # --- EVALUATION STEP ---
@@ -273,10 +296,13 @@ def train(
                 wandb.log({"val_loss": val_loss}, step=n_iter)                
                 
 
-            if debug and n_iter % (iters_per_logging*10) == 0:                
+            if debug and n_iter>0 and n_iter % (iters_per_logging*10) == 0:                
                 # --- ECG PLOTTING AND LOGGING ---
                 # Choose visualization data based on configuration
-                if bool(viz_split_config['use_ptbxl']):
+                use_ptbxl = viz_split_config.get('use_ptbxl', True)
+                if isinstance(use_ptbxl, str):
+                    use_ptbxl = use_ptbxl.lower() in ('true', '1', 'yes')
+                if use_ptbxl:
                     print("[VIZ] Using PTBXL validation split for visualization.")
                     # Use PTBXL validation split regardless of training dataset
                     # Always load PTBXL validation data for visualization if needed
@@ -303,6 +329,7 @@ def train(
                     print(f"[VIZ] Generating ECG comparison for sample {i} at iteration {n_iter}")
                     # pdb.set_trace()
                     # if debug and i>2:
+                    #     warn("\n\n\n\t\t==============================================\nDebug mode: Breaking after 2 batches\n\n\n\t\t==============================================\n")
                     #     break
                     real_audio8 = torch.index_select(real_audio, 1, index_8).float().cuda()
                     real_label = real_label.float().cuda()
@@ -367,9 +394,9 @@ def train(
                             'optimizer_state_dict': optimizer.state_dict()},
                             os.path.join(output_directory, checkpoint_name))
                 # Log the model checkpoint as an artifact to W&B
-                checkpoint_path = os.path.join(output_directory, checkpoint_name)
-                print(f"[CHECKPOINT] to checkpoint path, {checkpoint_path}")
-                wandb.save(checkpoint_path)
+                # checkpoint_path = os.path.join(output_directory, checkpoint_name)
+                # print(f"[CHECKPOINT] to checkpoint path, {checkpoint_path}")
+                # wandb.save(checkpoint_path)
                 wandb.log({"checkpoint_saved": n_iter}, step=n_iter)
                 
                 # if n_iter % iters_per_test == 0:
@@ -437,7 +464,15 @@ def train(
         
         # =================== Epoch level code ===================
         epoch_loss /= len(trainloader)
-        wandb.log({"epoch_train_loss": epoch_loss}, step=n_iter)
+        epoch_loss_dict = {"epoch_train_loss": epoch_loss}
+        if trainset_config['loss_fn'] == 'mel_loss':
+            epoch_mel_loss /= len(trainloader)
+            epoch_mse_loss /= len(trainloader)
+            epoch_loss_dict.update({
+                "epoch_mel_loss": epoch_mel_loss,
+                "epoch_mse_loss": epoch_mse_loss
+            })
+        wandb.log(epoch_loss_dict, step=n_iter)
     
     pbar.close()
     

@@ -1,5 +1,7 @@
 import torch
 from utils.util import training_loss_label
+from warnings import warn
+from tqdm.auto import tqdm
 
 def evaluate_model(net, valloader, index_8, diffusion_hyperparams, loss_fn, debug=False):
     net.eval()  # set model to evaluation mode
@@ -8,7 +10,7 @@ def evaluate_model(net, valloader, index_8, diffusion_hyperparams, loss_fn, debu
     count = 0
     
     with torch.no_grad():  # no gradient calculation
-        for audio, label in valloader:
+        for audio, label in tqdm(valloader, desc="Evaluating"):
             audio = torch.index_select(audio, 1, index_8).float().cuda()
             label = label.float().cuda()
             
@@ -21,6 +23,7 @@ def evaluate_model(net, valloader, index_8, diffusion_hyperparams, loss_fn, debu
             count += 1
 
             if debug and count>10:
+                warn("\n\n\n\t\t==============================================\nDebug mode: Breaking after 10 batches\n\n\n\t\t==============================================\n")
                 break
             
     

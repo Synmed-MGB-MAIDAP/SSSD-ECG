@@ -15,7 +15,7 @@ from metrics.metrics import RMSE, CorrelationCoefficient, MSE
 
 import argparse
 
-def load_real_ptbxl_data(data_dir="/home/kumargirish/data/ptbxl/processed/d_tog_15_cn/"):
+def load_real_ptbxl_data(data_dir="/home/kumargirish/data/ptbxl/"):
     X_test = np.load(os.path.join(data_dir, "data", "ptbxl_test_data.npy"))
     Y_test = np.load(os.path.join(data_dir, "labels", "ptbxl_test_labels.npy"))
     return X_test, Y_test
@@ -145,6 +145,6 @@ if __name__ == "__main__":
     dir_path = args.dir_path
     data_type = args.data_type
     
-    eval_by_dir_and_type(dir_path, data_type)
+    print(eval_by_dir_and_type(dir_path, data_type))
            
     

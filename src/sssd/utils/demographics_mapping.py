@@ -1,5 +1,6 @@
 import random
 import torch
+from tqdm.auto import tqdm
 
 # common practive thresholds 91
 thresholds_15 = {
@@ -100,20 +101,34 @@ def map_heartrate(hr):
     
     return one_hot_vector
 
-def categorize_demographics(data):
+def categorize_demographics_for_one(sample, include_text_embedding=False):
+    x, label_dict = sample
+    x = torch.tensor(x).transpose(0, 1)
+    disease = label_dict['encoded_label']
+    age = torch.tensor(map_age(label_dict['age']))
+    gender = torch.tensor(map_gender(label_dict['gender']))
+    hr = torch.tensor(map_heartrate(label_dict['hr']))
+    label_vec = torch.cat((disease, age, gender, hr), dim=0)
+    
+    # print("Shape of age vector:", age.shape)
+    # print("Shape of gender vector:", gender.shape)
+    # print("Shape of heart rate vector:", hr.shape)
+    # print("Shape of disease vector:", disease.shape)
+    # print("Shape of label vector:", label_vec.shape)
+    
+    if include_text_embedding:
+        embedding_vec = label_dict.get('text_embedding')
+        label_vec = torch.cat((label_vec, embedding_vec), dim=0)
+    return x, label_vec
+
+def categorize_demographics(data, include_text_embedding=False):
     """
     Categorize demographics data into one-hot vectors.
     """
     new_data = []
-    for sample in data:
+    for sample in tqdm(data, desc='Categorizing demographics'):
         # print(sample)
-        x, label_dict = sample
-        x = torch.tensor(x).transpose(0, 1)
-        disease = label_dict['encoded_label']
-        age = torch.tensor(map_age(label_dict['age']))
-        gender = torch.tensor(map_gender(label_dict['gender']))
-        hr = torch.tensor(map_heartrate(label_dict['hr']))
-        label_vec = torch.cat((disease, age, gender, hr), dim=0)
+        x, label_vec = categorize_demographics_for_one(sample, include_text_embedding)
         new_data.append([x, label_vec])
     return new_data
 

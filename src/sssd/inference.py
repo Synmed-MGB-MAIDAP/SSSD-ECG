@@ -3,17 +3,13 @@ import argparse
 import json
 import numpy as np
 import torch
-import random
 import time
-from pathlib import Path
 from models.SSSD_ECG import SSSD_ECG
 from utils.util import find_max_epoch, print_size, sampling_label, calc_diffusion_hyperparams, plot_ecg_comparison
-from utils.mimic_4_preprocess import MIMIC_IV_ECG_Dataset
-from utils.demographics_mapping import categorize_demographics
 import matplotlib.pyplot as plt
 import wandb
-import pdb
-
+from warnings import warn
+from tqdm.auto import tqdm
 
 def generate_four_leads(tensor):
     leadI = tensor[:,0,:].unsqueeze(1)
@@ -29,16 +25,16 @@ def generate_four_leads(tensor):
     return leads12
 
 
-def plot_signal_pairs(real_signals, generated_signals, save_dir, chunk_idx, num_samples=5):
+def plot_signal_pairs(real_signals, generated_signals, save_dir, chunk_idx, num_signal_pair_plots=5):
     """
     Plot pairs of real and generated signals for quality control
     """
     os.makedirs(save_dir, exist_ok=True)
 
-    print(len(real_signals), len(generated_signals), num_samples)
+    print(len(real_signals), len(generated_signals), num_signal_pair_plots)
     
     # Get the first num_samples indices
-    indices = range(min(len(real_signals), num_samples))
+    indices = range(min(len(real_signals), num_signal_pair_plots))
     
     for idx in indices:
         real = real_signals[idx]
@@ -90,20 +86,22 @@ def generate(output_directory,
                                       automitically selects the maximum iteration if 'max' is selected
     data_path (str):                  path to dataset, numpy array.
     """
-    output_directory = "/home/zoeyhuang/output/test_checkpoints"
-    ckpt_path = "/home/zoeyhuang/output/test_checkpoints"
-    experiment_name = "SSSD_ECG_MIMIC_IV"
-    inference_split = "val"
+    
+    # ======== uncomment if needed for testing ========
+    # output_directory = "/home/zoeyhuang/output/test_checkpoints"
+    # ckpt_path = "/home/zoeyhuang/output/test_checkpoints"
+    # inference_split = "val"
+    # experiment_name = "SSSD_ECG_MIMIC_IV"
+    
     print("num_samples: ", num_samples)
-
-    # Initialize wandb for visualization
-    wandb.init(project="sssd-ecg-inference", name=f"{experiment_name}_inference_{ckpt_iter}")
+    if num_samples!=400:
+        warn(f"num_samples={num_samples} is not 400, generating less data")
 
     # generate experiment (local) path
     local_path = "{}/ch{}_T{}_betaT{}".format(experiment_name, model_config["res_channels"], 
                                            diffusion_config["T"], 
                                            diffusion_config["beta_T"])
-    local_path = experiment_name
+    # local_path = experiment_name
     # Get shared output_directory ready
     output_directory = os.path.join(output_directory, local_path)
     if not os.path.isdir(output_directory):
@@ -138,17 +136,21 @@ def generate(output_directory,
     index_4 = torch.tensor([1,8,9,10])
 
     # Load data based on dataset type
-    if trainset_config["finetune_dataset"] == "ptbxl_all":
-        print("Loading PTBXL dataset")
+    fine_tune_dataset = trainset_config["finetune_dataset"]
+
+    if "ptbxl" in fine_tune_dataset or "mimic_iv" in fine_tune_dataset:
+        
+        print(f"[INFO] Loading {fine_tune_dataset} dataset")
+
         label_path = os.path.join(data_path, 'labels')
         data_path = os.path.join(data_path, 'data')
         
         # Load real data for comparison
-        real_data = np.load(os.path.join(data_path, f'ptbxl_{inference_split}_data.npy'))
-        labels = np.load(os.path.join(label_path, f'ptbxl_{inference_split}_labels.npy'))
-        
-        print("Loaded data from ", os.path.join(data_path, f'ptbxl_{inference_split}_data.npy'))
-        print("Loaded labels from ", os.path.join(label_path, f'ptbxl_{inference_split}_labels.npy'))
+        real_data = np.load(os.path.join(data_path, f'{fine_tune_dataset}_{inference_split}_data.npy'))
+        labels = np.load(os.path.join(label_path, f'{fine_tune_dataset}_{inference_split}_labels.npy'))
+
+        print("Loaded data from ", os.path.join(data_path, f'{fine_tune_dataset}_{inference_split}_data.npy'))
+        print("Loaded labels from ", os.path.join(label_path, f'{fine_tune_dataset}_{inference_split}_labels.npy'))
         print("Number of samples: ", len(labels))
         print("Each label shape: ", labels[0].shape)
         
@@ -160,52 +162,54 @@ def generate(output_directory,
             else:
                 chunks.append(labels[i:])
         
-        signal_length = 1000  # PTBXL signal length
-        
-    elif trainset_config["finetune_dataset"] == "mimic_iv":
-        print("Loading MIMIC-IV dataset")
-        test_data = MIMIC_IV_ECG_Dataset(
-            dataset_path=trainset_config['data_path'], 
-            usage=inference_split,
-            resample_length=1024,
-            max_samples=1000
-        )
-        test_data = categorize_demographics(test_data)
-        
-        # Convert to numpy arrays
-        real_data = []
-        labels = []
-        for audio, label in test_data:
-            real_data.append(audio.numpy())
-            labels.append(label.numpy())
-        real_data = np.stack(real_data)
-        labels = np.stack(labels)
-        
-        print("Number of samples: ", len(labels))
-        print("Each label shape: ", labels[0].shape)
-        
-        # break down labels into chunks of 400
-        chunks = []
-        for i in range(0, len(labels), 400):
-            if i + 400 <= len(labels):
-                chunks.append(labels[i:i+400])
-            else:
-                chunks.append(labels[i:])
-        
-        signal_length = 1024  # MIMIC-IV signal length
+        signal_length = 1000 # Assuming signal length is 1000 for both datasets
+    
+    else:
+        raise ValueError(f"Unsupported dataset: {fine_tune_dataset}. Supported datasets are 'ptbxl' and 'mimic_iv'.")
     
     print("Starting generation")
     tik = time.time()
     
     all_generated = []
     all_labels = []
-    real_data_inferenced = []
+    all_real_audio_used = []
     
     # Create directory for intermediate plots
     plot_dir = os.path.join(ckpt_path, f"synth_{inference_split}_plots")
     os.makedirs(plot_dir, exist_ok=True)
     
-    for i, label in enumerate(chunks):
+    # Synth data path
+    synth_data_path = os.path.join(
+        ckpt_path,
+        f"synth_{fine_tune_dataset}_{inference_split}_data_{ckpt_iter}_samples_{num_samples}"
+    )
+    os.makedirs(synth_data_path, exist_ok=True)
+    print("Using synth data path: ", synth_data_path)
+    
+    # Logging wandb config
+    # Initialize wandb for visualization
+    print("Initializing wandb for logging")
+    wandb.init(
+        project="sssd-ecg-inference", 
+        name=f"{experiment_name}_inference_{ckpt_iter}",
+        config = {
+            "experiment_name": experiment_name,
+            "ckpt_iter": ckpt_iter,
+            "num_samples": num_samples,
+            "data_path": data_path,
+            "signal_length": signal_length,
+            "inference_split": inference_split,
+            "fine_tune_dataset": fine_tune_dataset
+        }
+    )
+    
+    # print("===================================")
+    # print("Class split")
+    # print(net.class_split)
+    # print(net.embed_layer_types)
+    # print("===================================")
+    
+    for i, label in tqdm(enumerate(chunks), desc="Processing chunks"):
         print(f"Processing chunk {i+1}/{len(chunks)}")
         cond = torch.from_numpy(label).cuda().float()
 
@@ -217,14 +221,13 @@ def generate(output_directory,
         m_limit = min(num_samples, len(cond))
         cond = cond[:m_limit, :]
         real_audio = real_data[i*num_samples:i*num_samples+m_limit, :]
-        # cond = cond[:num_samples, :]
-        # real_audio = real_data[i*num_samples:(i+1)*num_samples, :]
+        all_real_audio_used.append(real_audio)
         real_audio = torch.index_select(torch.from_numpy(real_audio), 1, index_8).float().cuda()
         
-        print(f"Generating {num_samples} samples for chunk {i}")
-        pdb.set_trace()
+        print(f"Generating {m_limit} samples for chunk {i}")
+
         # Generate with the appropriate signal length
-        generated_audio = sampling_label(net, (num_samples, 8, signal_length), 
+        generated_audio = sampling_label(net, (m_limit, 8, signal_length), 
                                diffusion_hyperparams,
                                cond=cond)
         
@@ -233,7 +236,7 @@ def generate(output_directory,
 
         end.record()
         torch.cuda.synchronize()
-        print(f'Generated {num_samples} samples in {int(start.elapsed_time(end)/1000)} seconds')
+        print(f'Generated {m_limit} samples in {int(start.elapsed_time(end)/1000)} seconds')
 
         # Get corresponding real data for this chunk
         start_idx = i * 400
@@ -242,11 +245,11 @@ def generate(output_directory,
         
         # Plot intermediate results
         plot_signal_pairs(
-            chunk_real_data,
+            all_real_audio_used[-1],
             generated_audio12.detach().cpu().numpy(),
             plot_dir,
             i,
-            num_samples=num_samples  # Plot 5 random samples per chunk
+            num_signal_pair_plots=5  # Plot 5 random samples per chunk
         )
         
         # Log some samples to wandb
@@ -268,11 +271,9 @@ def generate(output_directory,
         # Save chunk results
         all_generated.append(generated_audio12.detach().cpu().numpy())
         all_labels.append(cond.detach().cpu().numpy())
-        real_data_inferenced.append(real_audio.detach().cpu().numpy())
         
         # Save intermediate results
         outfile = f'{i}_samples.npy'
-        synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_{ckpt_iter}")
         if not os.path.exists(synth_data_path):
             os.makedirs(synth_data_path)
         new_out = os.path.join(synth_data_path, outfile)
@@ -285,25 +286,24 @@ def generate(output_directory,
     # Combine all chunks
     all_generated = np.concatenate(all_generated, axis=0)
     all_labels = np.concatenate(all_labels, axis=0)
-    real_data_inferenced = np.concatenate(real_data_inferenced, axis=0)
-
+    all_real_audio_used = np.concatenate(all_real_audio_used, axis=0)
+    
     # Save complete results
-    synth_data_path = os.path.join(ckpt_path, f"synth_{inference_split}_data_{ckpt_iter}")
     np.save(os.path.join(synth_data_path, 'all_samples.npy'), all_generated)
     np.save(os.path.join(synth_data_path, 'all_labels.npy'), all_labels)
     
     # Save real data for comparison
-    np.save(os.path.join(synth_data_path, 'real_data.npy'), real_data)
+    np.save(os.path.join(synth_data_path, 'real_data.npy'), all_real_audio_used)
     
     # Plot final comparison of random samples
     final_plot_dir = os.path.join(plot_dir, 'final_comparison')
     os.makedirs(final_plot_dir, exist_ok=True)
     plot_signal_pairs(
-        real_data,
+        all_real_audio_used,
         all_generated,
         final_plot_dir,
         'final',
-        num_samples=num_samples  # Plot 10 random samples from the complete dataset
+        num_signal_pair_plots=10  # Plot 10 random samples from the complete dataset
     )
     
     tok = time.time()
@@ -321,7 +321,7 @@ if __name__ == "__main__":
                         help='JSON file for configuration')
     parser.add_argument('-ckpt_iter', '--ckpt_iter', default=10000,
                         help='Which checkpoint to use; assign a number or "max"')
-    parser.add_argument('-n', '--num_samples', type=int, default=4,
+    parser.add_argument('-n', '--num_samples', type=int, default=400,
                         help='Number of utterances to be generated')
     args = parser.parse_args()
 

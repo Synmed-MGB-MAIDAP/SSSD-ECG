@@ -4,13 +4,6 @@ import re
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from metrics.metrics import RMSE, CorrelationCoefficient, MSE, SNR
-import yaml
-from pathlib import Path
-from collections import defaultdict
-import pathlib
-import json
-from utils.mimic_4_preprocess import MIMIC_IV_ECG_Dataset
-from utils.demographics_mapping import categorize_demographics
 
 real_data_path = "/home/shared/backup/mimic-iv-ecg/resampled_len_1000" # replace with your real data path
 synthetic_data_path = "/home/claracao/output_sssd-ecg/condition_15_demographic_mel_loss_len1000/condition_15_demographic_mel_loss_len1000/ch256_T200_betaT0.02/synth_test_data" # replace with your synthetic data path

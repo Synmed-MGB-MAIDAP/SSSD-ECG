@@ -25,10 +25,10 @@
         "output_directory": "/home/nutansahoo/data/output_sssd_ecg",
         "ckpt_iter": "max",
         "iters_per_ckpt": 4000,
-        "iters_per_logging": 10,
+        "iters_per_logging": 100,
         "n_iters": 100000,
         "learning_rate": 2e-4,
-        "batch_size":8
+        "batch_size":16
     },
     "trainset_config":{
         "segment_length":1000,
@@ -38,12 +38,12 @@
         "data_path":"/home/nutansahoo/MGB-MAIDAP/models/SSSD-ECG/src/ptb_xl/processed_ptb_xl_fs100"
     },
     "gen_config":{
-        "output_directory": "/home/nutansahoo/data/output_sssd_ecg",
-        "ckpt_path": "/home/nutansahoo/data/output_sssd_ecg",
+        "output_directory": "/home/nutansahoo/data/output_sssd_ecg/",
+        "ckpt_path": "/home/nutansahoo/data/output_sssd_ecg/",
         "inference_split": "test"
     },
     "project_config": {
         "project_name": "MelSpectrogram",
-        "experiment_name": "reproduce_mel_loss_ptbxl"
+        "experiment_name": "reproduce_mel_loss_corrected_steps"
     }
 }

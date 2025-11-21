@@ -40,7 +40,7 @@ def train(output_directory,
          experiment_name,
          use_ptbxl,
          ptbxl_data_path,
-         debug=True):
+         debug=False):
   
     """
     Train Diffusion Models
@@ -347,9 +347,8 @@ def train(output_directory,
             # Log the model checkpoint as an artifact to W&B
             checkpoint_path = os.path.join(output_directory, checkpoint_name)
             print(f"[CHECKPOINT] to checkpoint path, {checkpoint_path}")
-            wandb.save(checkpoint_path)
-            wandb.log({"checkpoint_saved": n_iter})
-            
+            # wandb.save(checkpoint_path)
+            wandb.log({"checkpoint_saved": n_iter})       
             # if n_iter % iters_per_test == 0:
             if False:
                 # pdb.set_trace()
@@ -465,3 +464,4 @@ if __name__ == "__main__":
 
     train(**train_config, **project_config, **viz_split_config)
 
+# python src/sssd/train.py --config /home/nutansahoo/MGB-MAIDAP/models/SSSD-ECG/src/sssd/config/SSSD_ECG_mel_loss.json

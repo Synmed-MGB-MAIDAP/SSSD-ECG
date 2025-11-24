@@ -207,7 +207,7 @@ def training_loss_label(net, loss_fn, X, diffusion_hyperparams):
         orig_x_signal = ECGSignal(audio, sample_rate = 100)
         reconstructed_x_signal = ECGSignal(reconstructed_x, sample_rate = 100)
         mel_loss_calc = mel_loss(reconstructed_x_signal,orig_x_signal)
-        loss = mse_loss_fn(epsilon_theta, z) + mel_loss_calc*0.02
+        loss = mse_loss_fn(epsilon_theta, z) + mel_loss_calc*0.1  #weighting mel loss with 0.1
 
         return loss, mel_loss_calc, mse_loss_fn(epsilon_theta, z),orig_x_signal,reconstructed_x_signal #run6
 
